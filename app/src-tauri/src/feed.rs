@@ -23,7 +23,7 @@ pub fn kind_label(k: &str) -> &'static str {
     match k {
         "render" => "render",
         "drawing" => "drawing",
-        "model" => "model 3D",
+        "model" => "3D model",
         _ => "file",
     }
 }

@@ -31,6 +31,9 @@ const open = new Set<number>();
 const downloads = new Map<string, { bytes: number; total: number; path?: string; error?: string }>();
 const previews = new Map<string, string | null>();
 let online = true;
+type Drop = { path: string; name: string; size: number; kind: string; label: string };
+let dropped: Drop[] = [];
+const skipNaming = () => { try { return localStorage.getItem('skipNaming') === '1'; } catch { return false; } };
 let mini = false;
 let focusVersion: string | null = null;
 
@@ -154,9 +157,10 @@ function shell() {
     <main class="main">
       <div class="drop" id="drop" role="button" tabindex="0">
         ${ICON.upload}<strong>Drag files here or click to choose</strong>
-        <span class="small muted">Renders, drawings, 3D models. Send the same file name again and it becomes the next version.</span>
+        <span class="small muted">Renders, drawings, 3D models. Keep the file name or type a new one; the same name again becomes the next version.</span>
       </div>
       <div class="mini-sum" id="minisum"></div>
+      <div id="naming"></div>
       <p class="section-title" id="jobs-title" hidden>Sent from this PC</p>
       <div class="jobs" id="jobs"></div>
       <div class="filters" role="toolbar" aria-label="Filter">
@@ -324,11 +328,70 @@ async function choose() {
 
 async function addFiles(paths: string[]) {
   const infos = await invoke<FileInfo[]>('file_info', { paths });
-  for (const f of infos) {
-    if (!f.is_file || f.size === 0) continue;
-    // no question: the file's own name is the item (owner feedback 23 Nov 2026)
-    void send(f.path, itemName(f.name), kindOf(f.name), null);
-  }
+  const files = infos.filter((f) => f.is_file && f.size > 0)
+    .map((f) => ({ path: f.path, name: f.name, size: f.size, kind: kindOf(f.name), label: itemName(f.name) }));
+  if (!files.length) return;
+  if (skipNaming()) { for (const f of files) void send(f.path, f.label, f.kind, null); return; }
+  // name step: the file's own name is filled in; Enter keeps it, or type a new one (owner request 23 Nov 2026)
+  dropped.push(...files.filter((f) => !dropped.some((d) => d.path === f.path)));
+  if (mini) await toggleMini();
+  renderNaming();
+}
+
+function renderNaming() {
+  const box = document.getElementById('naming');
+  if (!box) return;
+  if (!dropped.length) { box.innerHTML = ''; return; }
+  const known = [...new Set(items.map((i) => i.code))].slice(0, 300);
+  box.innerHTML = `<form class="card naming" id="namingform" novalidate>
+    <div class="naming-head">
+      <h3>Send ${dropped.length === 1 ? 'this file' : `${dropped.length} files`}</h3>
+      <span class="small muted">Keep the file name, or type a new one. A name that already exists becomes its next version.</span>
+    </div>
+    <datalist id="known-names">${known.map((n) => `<option value="${esc(n)}"></option>`).join('')}</datalist>
+    ${dropped.map((f, i) => `<div class="naming-row">
+      <div class="thumb">${isImage(f.name) ? `<img src="${convertFileSrc(f.path)}" alt="">` : f.kind === 'render' ? ICON.photo : ICON.file}</div>
+      <div class="grow">
+        <label class="small muted ellipsis" for="nm${i}">${esc(f.name)} · ${mb(f.size)}</label>
+        <div class="naming-input"><input type="text" id="nm${i}" data-i="${i}" list="known-names" maxlength="80" value="${esc(f.label)}" autocomplete="off">
+          <button class="btn btn-ghost btn-sm" type="button" data-orig="${i}" title="Use the original file name">Original</button>
+          <button class="btn btn-ghost btn-sm" type="button" data-drop="${i}" aria-label="Remove ${esc(f.name)}">✕</button></div>
+        <p class="field-error" id="nmerr${i}" hidden>Type a name.</p>
+      </div>
+    </div>`).join('')}
+    <input type="text" id="nmnote" placeholder="Revision note for ${dropped.length === 1 ? 'this file' : 'these files'} (optional)" maxlength="500">
+    <div class="naming-actions">
+      <button class="btn btn-accent" type="submit">Send</button>
+      <button class="btn btn-ghost" type="button" id="nmcancel">Cancel</button>
+      <label class="small muted opt"><input type="checkbox" id="nmskip"> Always keep the file name and send right away</label>
+    </div>
+  </form>`;
+  const first = document.getElementById('nm0') as HTMLInputElement | null;
+  first?.focus(); first?.select();
+  box.querySelectorAll<HTMLInputElement>('input[data-i]').forEach((inp) => (inp.oninput = () => {
+    dropped[Number(inp.dataset.i)].label = inp.value;
+    inp.removeAttribute('aria-invalid'); document.getElementById(`nmerr${inp.dataset.i}`)!.hidden = true;
+  }));
+  box.querySelectorAll<HTMLButtonElement>('[data-orig]').forEach((b) => (b.onclick = () => {
+    const i = Number(b.dataset.orig); const f = dropped[i];
+    f.label = f.name.replace(/\.[A-Za-z0-9]{1,8}$/, '');
+    const inp = document.getElementById(`nm${i}`) as HTMLInputElement; inp.value = f.label; inp.focus();
+  }));
+  box.querySelectorAll<HTMLButtonElement>('[data-drop]').forEach((b) => (b.onclick = () => { dropped.splice(Number(b.dataset.drop), 1); renderNaming(); }));
+  document.getElementById('nmcancel')!.onclick = () => { dropped = []; renderNaming(); };
+  (document.getElementById('namingform') as HTMLFormElement).onsubmit = (e) => {
+    e.preventDefault();
+    let bad = false;
+    dropped.forEach((f, i) => {
+      if (!f.label.trim()) { bad = true; const inp = document.getElementById(`nm${i}`)!; inp.setAttribute('aria-invalid', 'true'); document.getElementById(`nmerr${i}`)!.hidden = false; }
+    });
+    if (bad) return;
+    if ((document.getElementById('nmskip') as HTMLInputElement).checked) { try { localStorage.setItem('skipNaming', '1'); } catch { /* storage off */ } }
+    const note = (document.getElementById('nmnote') as HTMLInputElement).value;
+    const go = dropped.splice(0);
+    renderNaming();
+    for (const f of go) void send(f.path, f.label.trim(), f.kind, note || null);
+  };
 }
 
 async function send(path: string, code: string, kind: string, note: string | null) {
@@ -419,6 +482,9 @@ async function openSettings() {
       ${[['all', 'Every upload from others'], ['downloaded', 'Only new versions of files I downloaded'], ['off', 'Off']].map(([v, l]) =>
         `<label class="opt"><input type="radio" name="notify" value="${v}" ${state.notify === v ? 'checked' : ''}> ${l}</label>`).join('')}
     </fieldset>
+    <fieldset><legend>Naming</legend>
+      <label class="opt"><input type="checkbox" id="skipnaming" ${skipNaming() ? 'checked' : ''}> Always keep the file name and send right away (skip the name step)</label>
+    </fieldset>
     <fieldset><legend>When Windows starts</legend>
       <label class="opt"><input type="checkbox" id="autostart" ${auto ? 'checked' : ''}> Open TalaStudio Upload automatically</label>
     </fieldset>
@@ -435,6 +501,9 @@ async function openSettings() {
     b.disabled = false;
   };
   dlg.querySelectorAll<HTMLInputElement>('input[name="notify"]').forEach((r) => (r.onchange = async () => { state = await invoke<AppState>('set_notify', { mode: r.value }); }));
+  (document.getElementById('skipnaming') as HTMLInputElement).onchange = (e) => {
+    try { localStorage.setItem('skipNaming', (e.target as HTMLInputElement).checked ? '1' : '0'); } catch { /* storage off */ }
+  };
   (document.getElementById('autostart') as HTMLInputElement).onchange = async (e) => {
     const on = (e.target as HTMLInputElement).checked;
     await (on ? autostartOn() : autostartOff()).catch(() => undefined);

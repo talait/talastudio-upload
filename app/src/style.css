@@ -164,10 +164,19 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
 .welcome h1 { margin: 0; font-size: 1.4rem; letter-spacing: -0.02em; line-height: 1.15; }
 .welcome p { margin: 0; color: var(--muted); }
 
+/* name step after a drop */
+.naming { padding: 0.8rem 0.9rem; display: grid; gap: 0.6rem; border-color: var(--line-strong); }
+.naming-head h3 { margin: 0; font-size: 1rem; font-weight: 600; }
+.naming-row { display: flex; gap: 0.7rem; align-items: center; }
+.naming-input { display: flex; gap: 0.3rem; align-items: center; margin-top: 0.2rem; }
+.naming-input input { flex: 1; min-width: 0; }
+.naming-actions { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+.naming-actions .opt { margin-left: auto; display: flex; gap: 0.35rem; align-items: center; }
+
 /* compact mode: small always-on-top drop box */
 body.mini .top { padding: 0.35rem 0.6rem; gap: 0.4rem; }
 body.mini .brand span, body.mini .who, body.mini #setbtn { display: none; }
-body.mini .filters, body.mini .items, body.mini .section-title, body.mini .jobs { display: none; }
+body.mini .filters, body.mini .items, body.mini .section-title, body.mini .jobs, body.mini #naming { display: none; }
 body.mini .main { padding: 0.5rem; gap: 0.4rem; overflow: hidden; }
 body.mini .drop { flex: 1; min-height: 0; padding: 0.6rem; display: grid; place-content: center; gap: 0.25rem; }
 body.mini .drop .small { display: none; }
