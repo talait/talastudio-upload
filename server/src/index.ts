@@ -1,13 +1,14 @@
 import { closeClient, one, requestStore, sql, type Env } from './db';
 import { ensureFolder, fileStream, getFile, startResumable, thumbnail } from './google';
 import { verifyGithubOidc } from './oidc';
+import { signInstaller } from './sign';
 
 /**
  * upload.talastudio.net: the server of the TalaStudio upload Windows app.
  * Every /api call carries the PC's device token (Authorization: Bearer …), made once at install by /api/register.
  * The bytes never pass through here on the way up: the PC sends them straight to a Google Drive resumable session.
  */
-const VERSION = '2026-11-23.2';
+const VERSION = '2026-11-23.3';
 
 type Json = Record<string, unknown>;
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { 'Cache-Control': 'no-store' } });
@@ -171,10 +172,13 @@ async function route(req: Request, env: Env, url: URL): Promise<Response> {
     const form = await req.formData();
     const version = String(form.get('version') ?? '').replace(/^v/, '');
     const file = form.get('installer') as unknown as File | null;
-    const signature = String(form.get('signature') ?? '');
-    if (!/^\d+\.\d+\.\d+$/.test(version) || !file || !signature) throw new HttpError(400, 'Kirim version, signature, dan installer.');
+    if (!/^\d+\.\d+\.\d+$/.test(version) || !file) throw new HttpError(400, 'Kirim version dan installer.');
     if (claims.ref !== `refs/tags/v${version}`) throw new HttpError(403, `Tag ${claims.ref} tidak cocok dengan versi ${version}.`);
     const buf = new Uint8Array(await file.arrayBuffer());
+    // the server signs (secret UPDATER_SIGNING_KEY); a signature sent by the build is used only when there is no key here
+    const key = process.env.UPDATER_SIGNING_KEY;
+    const signature = key ? await signInstaller(key, buf, file.name, version) : String(form.get('signature') ?? '');
+    if (!signature) throw new HttpError(500, 'UPDATER_SIGNING_KEY belum diisi di Worker.');
     const sha = [...new Uint8Array(await crypto.subtle.digest('SHA-256', buf))].map((x) => x.toString(16).padStart(2, '0')).join('');
     return json(await one(sql`select filedrop.release_publish(${version}, ${String(form.get('notes') ?? '')}, ${file.name}, ${signature}, ${sha}, ${Buffer.from(buf)}) as r`));
   }

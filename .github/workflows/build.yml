@@ -1,14 +1,9 @@
 name: Build Windows app
 
 # Every push to main builds the installer (download it from the run's artifacts).
-# A tag vX.Y.Z also makes a GitHub Release and publishes the signed update to upload.talastudio.net,
-# so every installed app updates itself. Publishing uses GitHub OIDC (no shared secret).
-#
-# One-time setup (repo Settings > Secrets and variables > Actions):
-#   Secret   TAURI_SIGNING_PRIVATE_KEY            private key from `npx @tauri-apps/cli signer generate`
-#   Secret   TAURI_SIGNING_PRIVATE_KEY_PASSWORD   its password (may be empty)
-#   Variable TAURI_UPDATER_PUBKEY                 the matching public key (not secret)
-# Without them the installer still builds, but apps cannot update themselves from it.
+# A tag vX.Y.Z also makes a GitHub Release and sends the installer to upload.talastudio.net, which signs it
+# (Worker secret UPDATER_SIGNING_KEY; the public key is in app/src-tauri/tauri.conf.json) and offers it to every
+# installed app as an update. Sending uses GitHub OIDC, so this repo needs no secrets at all.
 
 on:
   push:
@@ -55,27 +50,9 @@ jobs:
           test "$PKG" = "$CARGO"
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then test "refs/tags/v$PKG" = "$GITHUB_REF"; fi
 
-      - name: Turn on signed updates when the key is set
-        env:
-          PUBKEY: ${{ vars.TAURI_UPDATER_PUBKEY }}
-          HAS_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
-        run: |
-          if [ -n "$PUBKEY" ] && [ "$HAS_KEY" = "true" ]; then
-            node -e "
-              const fs=require('fs');const p='src-tauri/tauri.conf.json';const c=JSON.parse(fs.readFileSync(p,'utf8'));
-              c.plugins.updater.pubkey=process.env.PUBKEY;c.bundle.createUpdaterArtifacts=true;
-              fs.writeFileSync(p,JSON.stringify(c,null,2));"
-            echo "SIGNED=1" >> "$GITHUB_ENV"
-          else
-            echo "::warning::TAURI_UPDATER_PUBKEY / TAURI_SIGNING_PRIVATE_KEY not set: building without self-update."
-          fi
-
       - run: npm ci
 
       - name: Build installer
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: npx tauri build
 
       - name: Find installer
@@ -99,12 +76,11 @@ jobs:
           gh release upload "$GITHUB_REF_NAME" "$EXE" --clobber
 
       - name: Publish update to upload.talastudio.net
-        if: startsWith(github.ref, 'refs/tags/v') && env.SIGNED == '1'
+        if: startsWith(github.ref, 'refs/tags/v')
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           OIDC=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=upload.talastudio.net" | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).value")
-          SIG=$(cat "$EXE.sig")
           NOTES=$(git log -1 --pretty=%s)
           curl -sS --fail-with-body -X POST https://upload.talastudio.net/app/publish \
             -H "Authorization: Bearer $OIDC" \
-            --form-string "version=$VERSION" --form-string "notes=$NOTES" --form-string "signature=$SIG" -F "installer=@$EXE"
+            --form-string "version=$VERSION" --form-string "notes=$NOTES" -F "installer=@$EXE"

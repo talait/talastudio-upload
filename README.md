@@ -27,8 +27,9 @@ PC app ──(device token)──> upload.talastudio.net (Worker) ──> Supaba
 - `app/` — Tauri 2 app. Built by `.github/workflows/build.yml` on Windows; tag `vX.Y.Z` to release.
 - Database: migration `20261123100000_filedrop.sql` in `talait/talastudio-supabase`.
 
-## One-time setup for self-update
+## Updates
 
-On a PC with Node: `npx @tauri-apps/cli signer generate -w talastudio-upload.key` and keep the key file safe.
-In GitHub repo settings → Secrets and variables → Actions add secret `TAURI_SIGNING_PRIVATE_KEY` (file content),
-secret `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, and variable `TAURI_UPDATER_PUBKEY` (the `.pub` content).
+Push a tag `vX.Y.Z` (after bumping the version in `app/package.json` and `app/src-tauri/Cargo.toml`). The build sends the
+installer to the Worker with GitHub OIDC; the Worker signs it (secret `UPDATER_SIGNING_KEY`, Ed25519 in minisign format)
+and offers it to every installed app. The public key is in `app/src-tauri/tauri.conf.json`; apps reject anything not
+signed with the matching key, and the signature carries the version (`requireSignedVersion`).
