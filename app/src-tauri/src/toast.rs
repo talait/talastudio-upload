@@ -1,7 +1,7 @@
 //! Native Windows notifications (toasts).
 //!
 //! One notification per upload: it appears when someone starts uploading, its progress bar updates in place
-//! (same tag, rising sequence number), and it turns into "selesai" with Buka / Unduh buttons, or disappears when the
+//! (same tag, rising sequence number), and it turns into "finished" with Open / Download buttons, or disappears when the
 //! upload fails. Clicks come back through `on_action` with "open:<version_id>" or "download:<version_id>".
 //! On other systems (development on Linux/macOS) every call is a no-op.
 
@@ -139,13 +139,13 @@ mod imp {
         }
     }
 
-    /// Replace the progress notification with the finished one (same tag), with Buka / Unduh buttons.
+    /// Replace the progress notification with the finished one (same tag), with Open / Download buttons.
     pub fn done(id: &str, title: &str, line: &str, buttons: bool) {
         remove(id);
         let r = (|| -> windows::core::Result<()> {
             let actions = if buttons {
                 format!(
-                    r#"<actions><action content="Buka" arguments="open:{id}" activationType="foreground"/><action content="Unduh" arguments="download:{id}" activationType="foreground"/></actions>"#,
+                    r#"<actions><action content="Open" arguments="open:{id}" activationType="foreground"/><action content="Download" arguments="download:{id}" activationType="foreground"/></actions>"#,
                     id = esc(id)
                 )
             } else {

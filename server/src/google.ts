@@ -24,7 +24,7 @@ const b64url = (buf: ArrayBuffer | string) => {
 export async function googleToken(): Promise<string> {
   if (cache.__gTok && cache.__gTok.exp > Date.now() + 60_000) return cache.__gTok.token;
   const raw = process.env.GOOGLE_SA_KEY;
-  if (!raw) throw new Error('Server belum disetel: GOOGLE_SA_KEY belum diisi di Worker.');
+  if (!raw) throw new Error('The server is not configured: GOOGLE_SA_KEY is not set on the Worker.');
   const key = JSON.parse(raw) as { client_email: string; private_key: string };
   const now = Math.floor(Date.now() / 1000);
   const header = b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
@@ -88,7 +88,7 @@ export async function startResumable(o: {
     body: JSON.stringify({ name: o.name, parents: [o.parentId], description: o.description, appProperties: o.appProperties }),
   });
   const loc = res.headers.get('location');
-  if (!loc) throw new Error('Google Drive tidak memberi alamat upload.');
+  if (!loc) throw new Error('Google Drive did not return an upload address.');
   return loc;
 }
 

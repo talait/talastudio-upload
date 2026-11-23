@@ -19,7 +19,7 @@ pub struct Config {
     /// "all" = every upload of others, "downloaded" = only new versions of items I downloaded, "off".
     #[serde(default = "default_notify")]
     pub notify: String,
-    /// Unix seconds until which notifications are paused (tray menu "Jeda notifikasi 1 jam").
+    /// Unix seconds until which notifications are paused (tray menu "Pause notifications for 1 hour").
     #[serde(default)]
     pub paused_until: u64,
     /// Autostart was switched on once at first run; after that the person decides.

@@ -48,7 +48,7 @@
       "icons/icon.ico"
     ],
     "publisher": "TalaStudio",
-    "shortDescription": "Kirim file tim ke Drive TalaStudio",
+    "shortDescription": "Send team files to the TalaStudio Drive",
     "windows": {
       "nsis": {
         "installMode": "currentUser",

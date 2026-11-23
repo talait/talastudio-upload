@@ -30,12 +30,12 @@ pub fn transfer_client() -> &'static reqwest::Client {
 }
 
 pub fn token(app: &AppHandle) -> Result<String, String> {
-    config::get(app).token.ok_or_else(|| "PC ini belum terdaftar.".to_string())
+    config::get(app).token.ok_or_else(|| "This PC is not registered yet.".to_string())
 }
 
 async fn answer<T: DeserializeOwned>(res: reqwest::Response) -> Result<T, String> {
     let status = res.status();
-    let text = res.text().await.map_err(|e| format!("Jawaban server terputus: {e}"))?;
+    let text = res.text().await.map_err(|e| format!("The server answer was cut off: {e}"))?;
     if status.as_u16() == 204 {
         return serde_json::from_str("null").map_err(|e| e.to_string());
     }
@@ -43,17 +43,17 @@ async fn answer<T: DeserializeOwned>(res: reqwest::Response) -> Result<T, String
         let msg = serde_json::from_str::<Value>(&text)
             .ok()
             .and_then(|v| v.get("error").and_then(|e| e.as_str()).map(String::from))
-            .unwrap_or_else(|| format!("Server menjawab {status}"));
+            .unwrap_or_else(|| format!("The server answered {status}"));
         return Err(msg);
     }
-    serde_json::from_str(&text).map_err(|e| format!("Jawaban server tidak terbaca: {e}"))
+    serde_json::from_str(&text).map_err(|e| format!("The server answer could not be read: {e}"))
 }
 
 fn net(e: reqwest::Error) -> String {
     if e.is_connect() || e.is_timeout() {
-        "Tidak bisa terhubung ke server. Cek internet PC ini.".into()
+        "Cannot reach the server. Check this PC's internet connection.".into()
     } else {
-        format!("Koneksi bermasalah: {e}")
+        format!("Connection problem: {e}")
     }
 }
 

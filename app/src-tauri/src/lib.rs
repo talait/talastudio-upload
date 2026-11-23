@@ -51,10 +51,10 @@ fn get_state(app: AppHandle) -> AppState {
 async fn register(app: AppHandle, name: String) -> Result<AppState, String> {
     let name = name.trim().to_string();
     if name.is_empty() || name.chars().count() > 60 {
-        return Err("Isi nama PC (1–60 huruf).".into());
+        return Err("Type a PC name (1–60 characters).".into());
     }
     let r: Value = api::post(&app, "/api/register", &json!({ "name": name, "os": std::env::consts::OS })).await?;
-    let token = r.get("token").and_then(|x| x.as_str()).ok_or("Server tidak memberi token.")?.to_string();
+    let token = r.get("token").and_then(|x| x.as_str()).ok_or("The server did not return a token.")?.to_string();
     config::update(&app, |c| {
         c.token = Some(token);
         c.device_id = r.get("device_id").and_then(|x| x.as_str()).map(String::from);
@@ -161,10 +161,10 @@ async fn download_to_disk(app: &AppHandle, version_id: &str) -> Result<String, S
         .header("x-app-version", env!("CARGO_PKG_VERSION"))
         .send()
         .await
-        .map_err(|e| format!("Tidak bisa terhubung ke server: {e}"))?;
+        .map_err(|e| format!("Cannot reach the server: {e}"))?;
     if !res.status().is_success() {
         let msg = res.json::<Value>().await.ok().and_then(|v| v.get("error").and_then(|e| e.as_str()).map(String::from));
-        return Err(msg.unwrap_or_else(|| "File tidak bisa diunduh.".into()));
+        return Err(msg.unwrap_or_else(|| "The file could not be downloaded.".into()));
     }
     let name = res
         .headers()
@@ -193,7 +193,7 @@ async fn download_to_disk(app: &AppHandle, version_id: &str) -> Result<String, S
     let mut last = std::time::Instant::now();
     let mut stream = res.bytes_stream();
     while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(|e| format!("Unduhan terputus: {e}"))?;
+        let chunk = chunk.map_err(|e| format!("The download was interrupted: {e}"))?;
         f.write_all(&chunk).await.map_err(|e| e.to_string())?;
         got += chunk.len() as u64;
         if last.elapsed() > Duration::from_millis(250) {
@@ -284,7 +284,7 @@ async fn update_now(app: &AppHandle, manual: bool) -> Result<Option<String>, Str
         tokio::time::sleep(Duration::from_secs(20)).await;
     }
     if !manual {
-        toast::simple("TalaStudio Upload diperbarui", &format!("Versi {version} sedang dipasang. Aplikasi akan terbuka lagi sendiri."));
+        toast::simple("TalaStudio Upload is updating", &format!("Installing version {version}. The app will open again by itself."));
     }
     update.download_and_install(|_, _| {}, || {}).await.map_err(|e| e.to_string())?;
     app.restart();
@@ -298,7 +298,7 @@ pub fn run() {
     let _ = rustls::crypto::ring::default_provider().install_default();
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
-            // a second start (desktop shortcut, "Kirim ke", file dropped on the icon) hands its files to this one
+            // a second start (desktop shortcut, "Send to", file dropped on the icon) hands its files to this one
             tray::show_window(app);
             let files = files_from_args(&args);
             if !files.is_empty() {
@@ -318,7 +318,7 @@ pub fn run() {
             let handle = app.handle().clone();
             app.manage(config::ConfigState(Mutex::new(config::load(&handle))));
 
-            // switch "start with Windows" on once; after that the person decides in Pengaturan
+            // switch "start with Windows" on once; after that the person decides in Settings
             if !config::get(&handle).autostart_set {
                 use tauri_plugin_autostart::ManagerExt;
                 let _ = handle.autolaunch().enable();
@@ -334,8 +334,8 @@ pub fn run() {
                     let id = id.to_string();
                     tauri::async_runtime::spawn(async move {
                         match download_to_disk(&h2, &id).await {
-                            Ok(p) => toast::simple("File tersimpan", &p),
-                            Err(e) => toast::simple("Unduhan gagal", &e),
+                            Ok(p) => toast::simple("File saved", &p),
+                            Err(e) => toast::simple("Download failed", &e),
                         }
                     });
                 } else {

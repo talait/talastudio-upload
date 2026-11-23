@@ -1,6 +1,6 @@
 # talastudio-upload
 
-- Commit messages in English.
+- Commit messages in English. All user-facing text (app window, notifications, tray, server messages) is English too (owner decision 23 Nov 2026).
 - Two parts: `app/` is the Windows app (Tauri 2: Rust in `app/src-tauri`, plain TypeScript UI in `app/src`); `server/` is the Cloudflare Worker on `upload.talastudio.net`.
 - Data lives in the TalaStudio Supabase project, schema `filedrop`. Database changes go as migrations in `talait/talastudio-supabase` (`supabase/migrations`), never here. The Worker only calls `filedrop.*` functions through Hyperdrive `talastudio-db-app` (role `ts_app`).
 - A PC is a device token made once at install (the person types the PC name; no login, no approval — owner decision 23 Nov 2026). Only its hash is stored. Revoke a PC with `filedrop.devices.revoked_at`.

@@ -46,7 +46,7 @@ const veil = document.getElementById('drag-veil')!;
 const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 const mb = (b: number) => (b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
 const vnum = (n: number | null | undefined) => `v${String(n ?? 0).padStart(2, '0')}`;
-const KIND_LABEL: Record<string, string> = { render: 'render', drawing: 'gambar kerja', model: 'model 3D', other: 'file' };
+const KIND_LABEL: Record<string, string> = { render: 'render', drawing: 'drawing', model: '3D model', other: 'file' };
 const kindLabel = (k: string) => KIND_LABEL[k] ?? 'file';
 
 function kindOf(name: string): string {
@@ -58,7 +58,7 @@ function kindOf(name: string): string {
 }
 const isImage = (name: string) => /\.(png|jpe?g|webp|gif|bmp)$/i.test(name);
 
-/** "DH-104" from "meja rias DH104 revisi.png" / "dh_104_render.jpg"; null when the name has no code. */
+/** "DH-104" from "vanity DH104 revision.png" / "dh_104_render.jpg"; null when the name has no code. */
 function codeOf(name: string): string | null {
   const m = /(?:^|[^A-Za-z])([A-Za-z]{2})[-_ ]?(\d{3})(?!\d)/.exec(name);
   return m ? `${m[1].toUpperCase()}-${m[2]}` : null;
@@ -69,13 +69,13 @@ function when(iso: string | null): string {
   const d = new Date(iso);
   const now = new Date();
   const diff = (now.getTime() - d.getTime()) / 1000;
-  if (diff < 60) return 'baru saja';
-  if (diff < 3600) return `${Math.floor(diff / 60)} menit lalu`;
+  if (diff < 60) return 'just now';
+  if (diff < 3600) return `${Math.floor(diff / 60)} min ago`;
   const sameDay = d.toDateString() === now.toDateString();
-  if (sameDay) return d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+  if (sameDay) return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
   const y = new Date(now); y.setDate(now.getDate() - 1);
-  if (d.toDateString() === y.toDateString()) return `Kemarin ${d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`;
-  return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
+  if (d.toDateString() === y.toDateString()) return `Yesterday ${d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`;
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 }
 
 const ICON = {
@@ -96,33 +96,33 @@ const hasMine = (v: Version) => v.device_id === me() || v.downloads.some((d) => 
 
 function itemStatus(it: Item): { label: string; cls: string; isNew: boolean } {
   const up = uploadingV(it);
-  if (up) return { label: `Sedang diupload ${Math.floor((up.progress / Math.max(1, up.size)) * 100)}%`, cls: 'busy', isNew: false };
+  if (up) return { label: `Uploading ${Math.floor((up.progress / Math.max(1, up.size)) * 100)}%`, cls: 'busy', isNew: false };
   const latest = latestDone(it);
-  if (!latest) return { label: 'Gagal', cls: 'err', isNew: false };
-  if (latest.device_id === me()) return { label: 'Kiriman saya', cls: 'plain', isNew: false };
-  if (latest.downloads.some((d) => d.device_id === me())) return { label: 'Sudah diunduh', cls: 'ok', isNew: false };
-  if (it.versions.some((v) => v.status === 'done' && hasMine(v))) return { label: 'Ada revisi', cls: 'rev', isNew: true };
-  return { label: 'Baru', cls: 'new', isNew: true };
+  if (!latest) return { label: 'Failed', cls: 'err', isNew: false };
+  if (latest.device_id === me()) return { label: 'Sent by me', cls: 'plain', isNew: false };
+  if (latest.downloads.some((d) => d.device_id === me())) return { label: 'Downloaded', cls: 'ok', isNew: false };
+  if (it.versions.some((v) => v.status === 'done' && hasMine(v))) return { label: 'New revision', cls: 'rev', isNew: true };
+  return { label: 'New', cls: 'new', isNew: true };
 }
 
 // ---------- rendering ----------
 function renderWelcome(error = '') {
   app.innerHTML = `<main class="welcome"><form class="card" id="reg" novalidate>
     <img src="/icon.png" alt="" width="44" height="44">
-    <h1>Selamat datang di TalaStudio Upload</h1>
-    <p>Isi nama PC ini sekali saja. Nama ini muncul di riwayat setiap kali kamu mengirim file, dan bisa diganti kapan saja.</p>
-    <label for="pcname" class="small muted">Nama PC atau pemiliknya</label>
+    <h1>Welcome to TalaStudio Upload</h1>
+    <p>Type a name for this PC once. It shows in the history every time you send a file, and you can change it any time.</p>
+    <label for="pcname" class="small muted">PC name or owner</label>
     <input id="pcname" type="text" maxlength="60" placeholder="Rinto" autocomplete="off" ${error ? 'aria-invalid="true"' : ''} autofocus>
     ${error ? `<p class="field-error" id="regerr">${esc(error)}</p>` : ''}
-    <button class="btn btn-accent" type="submit" id="regbtn">Mulai</button>
+    <button class="btn btn-accent" type="submit" id="regbtn">Start</button>
   </form></main>`;
   const form = document.getElementById('reg') as HTMLFormElement;
   form.onsubmit = async (e) => {
     e.preventDefault();
     const name = (document.getElementById('pcname') as HTMLInputElement).value.trim();
-    if (!name) return renderWelcome('Isi nama PC dulu.');
+    if (!name) return renderWelcome('Type a PC name first.');
     const b = document.getElementById('regbtn') as HTMLButtonElement;
-    b.disabled = true; b.textContent = 'Mendaftarkan…'; b.setAttribute('aria-busy', 'true');
+    b.disabled = true; b.textContent = 'Registering…'; b.setAttribute('aria-busy', 'true');
     try {
       state = await invoke<AppState>('register', { name });
       await startMain();
@@ -135,24 +135,24 @@ function shell() {
     <header class="top">
       <div class="brand"><img src="/icon.png" alt="">TalaStudio Upload</div>
       <span class="who" id="who"></span>
-      <button class="btn btn-ghost btn-sm" id="minibtn" title="Mode kecil, selalu di atas">${ICON.pin}<span>Mode kecil</span></button>
-      <button class="btn btn-ghost btn-sm" id="setbtn" aria-label="Pengaturan">${ICON.gear}</button>
+      <button class="btn btn-ghost btn-sm" id="minibtn" title="Compact mode, always on top">${ICON.pin}<span>Compact</span></button>
+      <button class="btn btn-ghost btn-sm" id="setbtn" aria-label="Settings">${ICON.gear}</button>
     </header>
-    <div class="offline" id="offline" hidden>Tidak terhubung ke server. Upload dan riwayat menunggu sampai internet kembali.</div>
+    <div class="offline" id="offline" hidden>Not connected to the server. Uploads and history wait until the internet is back.</div>
     <main class="main">
       <div class="drop" id="drop" role="button" tabindex="0">
-        ${ICON.upload}<strong>Tarik file ke sini atau klik untuk memilih</strong>
-        <span class="small muted">Render, gambar kerja, model 3D. Kode item di nama file (misalnya DH-104) dikenali otomatis.</span>
+        ${ICON.upload}<strong>Drag files here or click to choose</strong>
+        <span class="small muted">Renders, drawings, 3D models. An item code in the file name (for example DH-104) is recognised automatically.</span>
       </div>
       <div class="mini-sum" id="minisum"></div>
       <div id="ask"></div>
-      <p class="section-title" id="jobs-title" hidden>Kiriman saya di PC ini</p>
+      <p class="section-title" id="jobs-title" hidden>Sent from this PC</p>
       <div class="jobs" id="jobs"></div>
-      <div class="filters" role="toolbar" aria-label="Saring">
-        <button class="chip" data-f="all" aria-pressed="true">Semua</button>
-        <button class="chip" data-f="mine" aria-pressed="false">Kiriman saya</button>
-        <button class="chip" data-f="new" aria-pressed="false">Belum saya unduh <span id="newcount"></span></button>
-        <input type="text" id="q" placeholder="Cari DH-104, koleksi, nama" aria-label="Cari">
+      <div class="filters" role="toolbar" aria-label="Filter">
+        <button class="chip" data-f="all" aria-pressed="true">All</button>
+        <button class="chip" data-f="mine" aria-pressed="false">Sent by me</button>
+        <button class="chip" data-f="new" aria-pressed="false">Not downloaded yet <span id="newcount"></span></button>
+        <input type="text" id="q" placeholder="Search DH-104, collection, name" aria-label="Search">
       </div>
       <div class="items" id="items"></div>
     </main>
@@ -174,7 +174,7 @@ function shell() {
 
 function renderWho() {
   const w = document.getElementById('who');
-  if (w) w.textContent = `${state.name ?? ''}${state.paused ? ' · notifikasi dijeda' : ''}`;
+  if (w) w.textContent = `${state.name ?? ''}${state.paused ? ' · notifications paused' : ''}`;
   const off = document.getElementById('offline');
   if (off) off.hidden = online;
 }
@@ -185,20 +185,20 @@ function renderAsk() {
   if (!p) { box.innerHTML = ''; return; }
   const list = codes.map((c) => `<option value="${esc(c.code)}">${esc(c.name ?? '')}</option>`).join('');
   box.innerHTML = `<form class="card ask" id="askform" novalidate>
-    <h3>${esc(p.name)} untuk item apa?${pending.length > 1 ? ` <span class="small">(${pending.length} file menunggu)</span>` : ''}</h3>
+    <h3>${esc(p.name)}: which item is it for?${pending.length > 1 ? ` <span class="small">(${pending.length} files waiting)</span>` : ''}</h3>
     <div class="row">
-      <input type="text" id="askcode" list="codelist" placeholder="Kode item, misalnya DH-104, atau nama bebas" maxlength="80" autocomplete="off">
+      <input type="text" id="askcode" list="codelist" placeholder="Item code, for example DH-104, or any name" maxlength="80" autocomplete="off">
       <datalist id="codelist">${list}</datalist>
-      <select id="askkind" aria-label="Jenis file">
+      <select id="askkind" aria-label="File type">
         ${['render', 'drawing', 'model', 'other'].map((k) => `<option value="${k}" ${k === p.kind ? 'selected' : ''}>${kindLabel(k)}</option>`).join('')}
       </select>
     </div>
-    <input type="text" id="asknote" placeholder="Catatan revisi (opsional)" maxlength="500">
+    <input type="text" id="asknote" placeholder="Revision note (optional)" maxlength="500">
     <p class="field-error" id="askerr" hidden></p>
     <div class="row">
-      <button class="btn btn-accent" type="submit">Kirim</button>
-      ${pending.length > 1 ? '<button class="btn" type="button" id="askall">Kirim semua dengan item ini</button>' : ''}
-      <button class="btn btn-ghost" type="button" id="askskip">Lewati file ini</button>
+      <button class="btn btn-accent" type="submit">Send</button>
+      ${pending.length > 1 ? '<button class="btn" type="button" id="askall">Send all with this item</button>' : ''}
+      <button class="btn btn-ghost" type="button" id="askskip">Skip this file</button>
     </div>
   </form>`;
   const code = document.getElementById('askcode') as HTMLInputElement;
@@ -206,7 +206,7 @@ function renderAsk() {
   const go = (all: boolean) => {
     const v = code.value.trim();
     const err = document.getElementById('askerr')!;
-    if (!v) { code.setAttribute('aria-invalid', 'true'); err.hidden = false; err.textContent = 'Isi kode item atau nama dulu.'; return; }
+    if (!v) { code.setAttribute('aria-invalid', 'true'); err.hidden = false; err.textContent = 'Type an item code or name first.'; return; }
     const kind = (document.getElementById('askkind') as HTMLSelectElement).value;
     const note = (document.getElementById('asknote') as HTMLInputElement).value;
     const take = all ? pending.splice(0) : pending.splice(0, 1);
@@ -226,18 +226,18 @@ function jobView(j: Job): string {
   let line = '';
   let right = '';
   switch (j.state) {
-    case 'hashing': line = `<div class="small muted">Memeriksa file… ${pct}%</div><div class="bar"><i style="width:${pct}%"></i></div>`; right = `<button class="btn btn-sm" data-cancel="${j.local_id}">Batal</button>`; break;
-    case 'starting': line = '<div class="small muted">Menyiapkan upload…</div><div class="bar"><i style="width:0"></i></div>'; break;
+    case 'hashing': line = `<div class="small muted">Checking file… ${pct}%</div><div class="bar"><i style="width:${pct}%"></i></div>`; right = `<button class="btn btn-sm" data-cancel="${j.local_id}">Cancel</button>`; break;
+    case 'starting': line = '<div class="small muted">Preparing upload…</div><div class="bar"><i style="width:0"></i></div>'; break;
     case 'uploading':
-      line = `<div class="small muted">${mb(j.bytes)} dari ${mb(j.size)} · ${pct}%${j.message ? ` · <span class="msg-warn">${esc(j.message)}</span>` : ''}</div><div class="bar"><i style="width:${pct}%"></i></div>`;
-      right = `<button class="btn btn-sm" data-cancel="${j.local_id}">Batal</button>`; break;
+      line = `<div class="small muted">${mb(j.bytes)} of ${mb(j.size)} · ${pct}%${j.message ? ` · <span class="msg-warn">${esc(j.message)}</span>` : ''}</div><div class="bar"><i style="width:${pct}%"></i></div>`;
+      right = `<button class="btn btn-sm" data-cancel="${j.local_id}">Cancel</button>`; break;
     case 'done':
-      line = `<div class="small msg-ok">Terkirim${j.stored_name ? ` sebagai ${esc(j.stored_name)}` : ''}. Semua PC sudah bisa melihatnya.</div>
-        <div class="small" style="margin-top:.35rem;display:flex;gap:.4rem"><input type="text" data-note="${j.version_id}" placeholder="Tambah catatan revisi (opsional)" maxlength="500" value="${esc(j.note ?? '')}" style="flex:1;min-height:1.85rem;font-size:.85rem"><button class="btn btn-sm" data-savenote="${j.version_id}">Simpan</button></div>`;
-      right = `<button class="btn btn-ghost btn-sm" data-dismiss="${j.local_id}">Tutup</button>`; break;
-    case 'duplicate': line = `<div class="small msg-warn">${esc(j.message)}</div>`; right = `<button class="btn btn-ghost btn-sm" data-dismiss="${j.local_id}">Tutup</button>`; break;
-    case 'failed': line = `<div class="small msg-err">${esc(j.message ?? 'Upload gagal.')} Tarik file ini lagi untuk mencoba ulang.</div>`; right = `<button class="btn btn-ghost btn-sm" data-dismiss="${j.local_id}">Tutup</button>`; break;
-    case 'cancelled': line = '<div class="small muted">Dibatalkan.</div>'; right = `<button class="btn btn-ghost btn-sm" data-dismiss="${j.local_id}">Tutup</button>`; break;
+      line = `<div class="small msg-ok">Sent${j.stored_name ? ` as ${esc(j.stored_name)}` : ''}. Every PC can see it now.</div>
+        <div class="small" style="margin-top:.35rem;display:flex;gap:.4rem"><input type="text" data-note="${j.version_id}" placeholder="Add a revision note (optional)" maxlength="500" value="${esc(j.note ?? '')}" style="flex:1;min-height:1.85rem;font-size:.85rem"><button class="btn btn-sm" data-savenote="${j.version_id}">Save</button></div>`;
+      right = `<button class="btn btn-ghost btn-sm" data-dismiss="${j.local_id}">Close</button>`; break;
+    case 'duplicate': line = `<div class="small msg-warn">${esc(j.message)}</div>`; right = `<button class="btn btn-ghost btn-sm" data-dismiss="${j.local_id}">Close</button>`; break;
+    case 'failed': line = `<div class="small msg-err">${esc(j.message ?? 'Upload failed.')} Drop the file again to retry.</div>`; right = `<button class="btn btn-ghost btn-sm" data-dismiss="${j.local_id}">Close</button>`; break;
+    case 'cancelled': line = '<div class="small muted">Cancelled.</div>'; right = `<button class="btn btn-ghost btn-sm" data-dismiss="${j.local_id}">Close</button>`; break;
   }
   return `<div class="card job" data-job="${j.local_id}"><div class="thumb">${thumb}</div>
     <div class="grow"><div class="item-title ellipsis">${title}</div><div class="small muted ellipsis">${esc(j.name)}</div>${line}</div>${right}</div>`;
@@ -278,7 +278,7 @@ function dlView(id: string): string {
   const d = downloads.get(id);
   if (!d) return '';
   if (d.error) return `<span class="small msg-err">${esc(d.error)}</span>`;
-  if (d.path) return `<button class="btn btn-sm" data-reveal="${esc(d.path)}">Buka folder</button>`;
+  if (d.path) return `<button class="btn btn-sm" data-reveal="${esc(d.path)}">Show in folder</button>`;
   return `<span class="small muted">${d.total ? `${Math.floor((d.bytes / d.total) * 100)}%` : mb(d.bytes)}</span>`;
 }
 
@@ -295,7 +295,7 @@ function renderItems() {
     return true;
   });
   if (!rows.length) {
-    box.innerHTML = `<div class="empty">${visible.length ? 'Tidak ada file di saringan ini.' : 'Belum ada file. Tarik file ke kotak di atas untuk mengirim yang pertama.'}</div>`;
+    box.innerHTML = `<div class="empty">${visible.length ? 'No files match this filter.' : 'No files yet. Drag a file into the box above to send the first one.'}</div>`;
     renderMiniSum();
     return;
   }
@@ -307,20 +307,20 @@ function renderItems() {
     const head = `<div class="item-head" data-open="${it.id}">
       <div class="thumb" data-thumb="${latestDone(it)?.id ?? ''}">${thumbFor(latestDone(it), it.kind)}</div>
       <div class="grow">
-        <div class="item-title ellipsis">${esc(it.code)} · ${kindLabel(it.kind)} · ${vnum(latest.version)} <span class="v">${doneCount > 1 ? `${doneCount} versi` : ''}</span></div>
+        <div class="item-title ellipsis">${esc(it.code)} · ${kindLabel(it.kind)} · ${vnum(latest.version)} <span class="v">${doneCount > 1 ? `${doneCount} versions` : ''}</span></div>
         <div class="small muted ellipsis">${esc(latest.by)} · ${when(latest.done_at ?? latest.started_at)} · ${esc(latest.note || latest.original_name)}</div>
       </div>
       <span class="pill ${st.cls}">${esc(st.label)}</span>
-      ${latestDone(it) ? (downloads.has(latestDone(it)!.id) ? dlView(latestDone(it)!.id) : `<button class="btn btn-sm" data-dl="${latestDone(it)!.id}" aria-label="Unduh versi terbaru">${ICON.down}Unduh</button>`) : ''}
+      ${latestDone(it) ? (downloads.has(latestDone(it)!.id) ? dlView(latestDone(it)!.id) : `<button class="btn btn-sm" data-dl="${latestDone(it)!.id}" aria-label="Download the latest version">${ICON.down}Download</button>`) : ''}
       ${ICON.chev}
     </div>`;
     const vers = isOpen ? `<div class="versions">${it.versions.filter((v) => v.status === 'done' || v.status === 'uploading').map((v, i) => {
       const takers = v.downloads.filter((d) => d.device_id !== v.device_id).map((d) => `${esc(d.by)} ${when(d.at)}`).join(', ');
-      const status = v.status === 'uploading' ? `<span class="pill busy">${Math.floor((v.progress / Math.max(1, v.size)) * 100)}%</span>` : i > 0 ? '<span class="pill plain">lama</span>' : '';
+      const status = v.status === 'uploading' ? `<span class="pill busy">${Math.floor((v.progress / Math.max(1, v.size)) * 100)}%</span>` : i > 0 ? '<span class="pill plain">old</span>' : '';
       return `<div class="ver"><span class="num">${vnum(v.version)}</span>
         <div class="grow"><div class="ellipsis">${esc(v.note || v.original_name)} ${status}</div>
-        <div class="small muted ellipsis">${esc(v.by)} · ${when(v.done_at ?? v.started_at)} · ${mb(v.size)}${takers ? ` · diunduh: ${takers}` : ''}</div></div>
-        ${v.status === 'done' ? `${v.link ? `<button class="btn btn-ghost btn-sm" data-link="${esc(v.link)}">Drive</button>` : ''}${downloads.has(v.id) ? dlView(v.id) : `<button class="btn btn-sm" data-dl="${v.id}">Unduh</button>`}` : ''}
+        <div class="small muted ellipsis">${esc(v.by)} · ${when(v.done_at ?? v.started_at)} · ${mb(v.size)}${takers ? ` · downloaded by: ${takers}` : ''}</div></div>
+        ${v.status === 'done' ? `${v.link ? `<button class="btn btn-ghost btn-sm" data-link="${esc(v.link)}">Drive</button>` : ''}${downloads.has(v.id) ? dlView(v.id) : `<button class="btn btn-sm" data-dl="${v.id}">Download</button>`}` : ''}
       </div>`;
     }).join('')}</div>` : '';
     return `<div class="card item ${isOpen ? 'open' : ''} ${focusVersion && it.versions.some((v) => v.id === focusVersion) ? 'focus' : ''}" data-item="${it.id}">${head}${vers}</div>`;
@@ -333,12 +333,12 @@ function renderMiniSum() {
   if (!el) return;
   const active = [...jobs.values()].filter((j) => ['hashing', 'starting', 'uploading'].includes(j.state)).length;
   const fresh = items.filter((it) => itemStatus(it).isNew).length;
-  el.textContent = [active ? `${active} sedang upload` : 'Tidak ada upload berjalan', fresh ? `${fresh} file baru` : ''].filter(Boolean).join(' · ');
+  el.textContent = [active ? `${active} uploading` : 'No uploads running', fresh ? `${fresh} new` : ''].filter(Boolean).join(' · ');
 }
 
 // ---------- actions ----------
 async function choose() {
-  const r = await pickFiles({ multiple: true, directory: false, title: 'Pilih file untuk dikirim' });
+  const r = await pickFiles({ multiple: true, directory: false, title: 'Choose files to send' });
   if (!r) return;
   await addFiles(Array.isArray(r) ? r : [r]);
 }
@@ -400,12 +400,12 @@ async function onJobsClick(e: Event) {
   if (s) {
     const id = s.dataset.savenote!;
     const input = document.querySelector<HTMLInputElement>(`[data-note="${id}"]`);
-    s.disabled = true; s.textContent = 'Menyimpan…';
+    s.disabled = true; s.textContent = 'Saving…';
     try {
       await invoke('set_note', { versionId: id, note: input?.value ?? '' });
       for (const j of jobs.values()) if (j.version_id === id) j.note = input?.value ?? '';
-      s.textContent = 'Tersimpan';
-    } catch (err) { s.textContent = 'Gagal, coba lagi'; s.title = String(err); }
+      s.textContent = 'Saved';
+    } catch (err) { s.textContent = 'Failed, try again'; s.title = String(err); }
     s.disabled = false;
   }
 }
@@ -417,36 +417,36 @@ async function toggleMini() {
   await w.setAlwaysOnTop(mini);
   await w.setSize(new LogicalSize(mini ? 320 : 980, mini ? 230 : 700));
   const b = document.getElementById('minibtn')!;
-  b.innerHTML = mini ? `${ICON.pin}<span>Ukuran penuh</span>` : `${ICON.pin}<span>Mode kecil</span>`;
+  b.innerHTML = mini ? `${ICON.pin}<span>Full size</span>` : `${ICON.pin}<span>Compact</span>`;
 }
 
 async function openSettings() {
   const dlg = document.getElementById('settings') as HTMLDialogElement;
   const auto = await autostartIsOn().catch(() => false);
   dlg.innerHTML = `<form class="dlg" method="dialog" id="setform">
-    <h2>Pengaturan</h2>
-    <fieldset><legend>Nama PC</legend>
-      <div class="row"><input type="text" id="newname" maxlength="60" value="${esc(state.name ?? '')}"><button class="btn" type="button" id="renamebtn">Simpan</button></div>
+    <h2>Settings</h2>
+    <fieldset><legend>PC name</legend>
+      <div class="row"><input type="text" id="newname" maxlength="60" value="${esc(state.name ?? '')}"><button class="btn" type="button" id="renamebtn">Save</button></div>
       <p class="field-error" id="renameerr" hidden></p>
-      <span class="small muted">Nama ini tampil di riwayat semua PC, termasuk untuk kiriman lama.</span>
+      <span class="small muted">This name shows in the history on every PC, including for earlier uploads.</span>
     </fieldset>
-    <fieldset><legend>Notifikasi Windows</legend>
-      ${[['all', 'Semua upload dari orang lain'], ['downloaded', 'Hanya revisi file yang pernah saya unduh'], ['off', 'Mati']].map(([v, l]) =>
+    <fieldset><legend>Windows notifications</legend>
+      ${[['all', 'Every upload from others'], ['downloaded', 'Only new versions of files I downloaded'], ['off', 'Off']].map(([v, l]) =>
         `<label class="opt"><input type="radio" name="notify" value="${v}" ${state.notify === v ? 'checked' : ''}> ${l}</label>`).join('')}
     </fieldset>
-    <fieldset><legend>Saat Windows menyala</legend>
-      <label class="opt"><input type="checkbox" id="autostart" ${auto ? 'checked' : ''}> Buka TalaStudio Upload otomatis</label>
+    <fieldset><legend>When Windows starts</legend>
+      <label class="opt"><input type="checkbox" id="autostart" ${auto ? 'checked' : ''}> Open TalaStudio Upload automatically</label>
     </fieldset>
-    <footer><span class="small muted">Versi ${esc(state.version)} · <button class="btn btn-ghost btn-sm" type="button" id="updbtn">Cek pembaruan</button></span>
-      <button class="btn btn-accent" value="close">Selesai</button></footer>
+    <footer><span class="small muted">Version ${esc(state.version)} · <button class="btn btn-ghost btn-sm" type="button" id="updbtn">Check for updates</button></span>
+      <button class="btn btn-accent" value="close">Done</button></footer>
   </form>`;
   dlg.showModal();
   document.getElementById('renamebtn')!.onclick = async () => {
     const b = document.getElementById('renamebtn') as HTMLButtonElement;
     const err = document.getElementById('renameerr')!;
-    b.disabled = true; b.textContent = 'Menyimpan…';
-    try { state = await invoke<AppState>('rename', { name: (document.getElementById('newname') as HTMLInputElement).value }); b.textContent = 'Tersimpan'; err.hidden = true; renderWho(); }
-    catch (e) { err.hidden = false; err.textContent = String(e); b.textContent = 'Simpan'; }
+    b.disabled = true; b.textContent = 'Saving…';
+    try { state = await invoke<AppState>('rename', { name: (document.getElementById('newname') as HTMLInputElement).value }); b.textContent = 'Saved'; err.hidden = true; renderWho(); }
+    catch (e) { err.hidden = false; err.textContent = String(e); b.textContent = 'Save'; }
     b.disabled = false;
   };
   dlg.querySelectorAll<HTMLInputElement>('input[name="notify"]').forEach((r) => (r.onchange = async () => { state = await invoke<AppState>('set_notify', { mode: r.value }); }));
@@ -456,11 +456,11 @@ async function openSettings() {
   };
   document.getElementById('updbtn')!.onclick = async () => {
     const b = document.getElementById('updbtn') as HTMLButtonElement;
-    b.disabled = true; b.textContent = 'Memeriksa…';
+    b.disabled = true; b.textContent = 'Checking…';
     try {
       const v = await invoke<string | null>('check_update');
-      b.textContent = v ? `Memasang ${v}…` : 'Sudah versi terbaru';
-    } catch (e) { b.textContent = 'Gagal memeriksa'; b.title = String(e); }
+      b.textContent = v ? `Installing ${v}…` : 'Up to date';
+    } catch (e) { b.textContent = 'Check failed'; b.title = String(e); }
     b.disabled = false;
   };
 }
@@ -502,7 +502,7 @@ async function main() {
     else if (e.payload.type === 'drop') { veil.hidden = true; void addFiles(e.payload.paths); }
   });
 
-  setInterval(() => { if (state.registered) renderItems(); }, 60_000); // keep "5 menit lalu" fresh
+  setInterval(() => { if (state.registered) renderItems(); }, 60_000); // keep "5 min ago" fresh
 
   if (state.registered) await startMain();
   else renderWelcome();

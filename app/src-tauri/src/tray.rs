@@ -32,10 +32,10 @@ pub fn show_window(app: &AppHandle) {
 }
 
 pub fn build(app: &AppHandle) -> tauri::Result<()> {
-    let open = MenuItem::with_id(app, "open", "Buka TalaStudio Upload", true, None::<&str>)?;
+    let open = MenuItem::with_id(app, "open", "Open TalaStudio Upload", true, None::<&str>)?;
     let pick = MenuItem::with_id(app, "pick", "Upload file…", true, None::<&str>)?;
-    let pause = CheckMenuItem::with_id(app, "pause", "Jeda notifikasi 1 jam", true, false, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "Keluar", true, None::<&str>)?;
+    let pause = CheckMenuItem::with_id(app, "pause", "Pause notifications for 1 hour", true, false, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&open, &pick, &PredefinedMenuItem::separator(app)?, &pause, &PredefinedMenuItem::separator(app)?, &quit])?;
     let pause_item = pause.clone();
     TrayIconBuilder::with_id("main")
@@ -85,9 +85,9 @@ pub fn set(app: &AppHandle, status: Status, new_count: usize) {
             let _ = t.set_icon(Some(img));
         }
         let tip = match status {
-            Status::Busy => "TalaStudio Upload · sedang upload".to_string(),
-            Status::Error => "TalaStudio Upload · ada upload yang gagal".to_string(),
-            _ if new_count > 0 => format!("TalaStudio Upload · {new_count} file baru belum diunduh"),
+            Status::Busy => "TalaStudio Upload · uploading".to_string(),
+            Status::Error => "TalaStudio Upload · an upload failed".to_string(),
+            _ if new_count > 0 => format!("TalaStudio Upload · {new_count} new file(s) not downloaded yet"),
             _ => "TalaStudio Upload".to_string(),
         };
         let _ = t.set_tooltip(Some(tip));

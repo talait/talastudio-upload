@@ -22,7 +22,7 @@ pub struct Feed(pub Mutex<FeedState>);
 pub fn kind_label(k: &str) -> &'static str {
     match k {
         "render" => "render",
-        "drawing" => "gambar kerja",
+        "drawing" => "drawing",
         "model" => "model 3D",
         _ => "file",
     }
@@ -121,11 +121,11 @@ fn notify(app: &AppHandle, item: &Value, v: &Value, me: &str) {
             if muted {
                 return;
             }
-            let vs = format!("{} dari {}", mb(done_bytes), mb(size));
-            let p = toast::Progress { title: s(v, "name"), status: "Mengupload…", value: done_bytes / size, value_string: &vs };
+            let vs = format!("{} of {}", mb(done_bytes), mb(size));
+            let p = toast::Progress { title: s(v, "name"), status: "Uploading…", value: done_bytes / size, value_string: &vs };
             match shown {
                 None => {
-                    toast::progress_show(&id, &format!("{who} sedang mengupload {what}"), &mb(size), &p);
+                    toast::progress_show(&id, &format!("{who} is uploading {what}"), &mb(size), &p);
                     st.0.lock().unwrap().toasts.insert(id, pct);
                 }
                 Some(last) if last >= 0 && pct > last => {
@@ -142,7 +142,7 @@ fn notify(app: &AppHandle, item: &Value, v: &Value, me: &str) {
             if !muted {
                 let note = s(v, "note");
                 let line = if note.is_empty() { format!("{} · {}", s(v, "name"), mb(size)) } else { note.to_string() };
-                toast::done(&id, &format!("{who} selesai mengupload {what}"), &line, true);
+                toast::done(&id, &format!("{who} uploaded {what}"), &line, true);
             } else if shown.is_some() {
                 toast::remove(&id);
             }

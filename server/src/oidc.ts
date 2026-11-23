@@ -19,26 +19,26 @@ async function keys(force = false) {
 }
 
 export async function verifyGithubOidc(auth: string | null, audience: string, repo: string): Promise<Claims> {
-  const deny = (why: string) => Object.assign(new Error(`Publish ditolak: ${why}`), { status: 403 });
+  const deny = (why: string) => Object.assign(new Error(`Publish refused: ${why}`), { status: 403 });
   const token = /^Bearer\s+(\S+)$/.exec(auth ?? '')?.[1];
-  if (!token) throw Object.assign(deny('tidak ada token GitHub OIDC'), { status: 401 });
+  if (!token) throw Object.assign(deny('no GitHub OIDC token'), { status: 401 });
   const [h, p, s] = token.split('.');
-  if (!h || !p || !s) throw deny('token rusak');
+  if (!h || !p || !s) throw deny('malformed token');
   let header: { alg: string; kid: string };
-  try { header = JSON.parse(new TextDecoder().decode(unb64(h))); } catch { throw deny('token rusak'); }
-  if (header.alg !== 'RS256') throw deny('algoritma token');
+  try { header = JSON.parse(new TextDecoder().decode(unb64(h))); } catch { throw deny('malformed token'); }
+  if (header.alg !== 'RS256') throw deny('token algorithm');
   let jwk = (await keys()).find((k) => k.kid === header.kid);
   if (!jwk) jwk = (await keys(true)).find((k) => k.kid === header.kid);
-  if (!jwk) throw deny('kunci GitHub tidak dikenal');
+  if (!jwk) throw deny('unknown GitHub key');
   const key = await crypto.subtle.importKey('jwk', { kty: jwk.kty, n: jwk.n, e: jwk.e, alg: 'RS256', ext: true }, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['verify']);
   let ok = false;
   try { ok = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', key, unb64(s), new TextEncoder().encode(`${h}.${p}`)); } catch { ok = false; }
-  if (!ok) throw deny('tanda tangan tidak cocok');
+  if (!ok) throw deny('signature does not match');
   const c = JSON.parse(new TextDecoder().decode(unb64(p))) as Claims;
   const now = Math.floor(Date.now() / 1000);
-  if (c.iss !== ISSUER) throw deny('penerbit');
+  if (c.iss !== ISSUER) throw deny('issuer');
   if (!(Array.isArray(c.aud) ? c.aud.includes(audience) : c.aud === audience)) throw deny('audience');
-  if (c.exp < now - 30 || (c.nbf && c.nbf > now + 30)) throw deny('token kedaluwarsa');
+  if (c.exp < now - 30 || (c.nbf && c.nbf > now + 30)) throw deny('token expired');
   if (c.repository !== repo) throw deny(`repo ${c.repository}`);
   if (!/^refs\/(tags\/v\d+\.\d+\.\d+|heads\/main)$/.test(c.ref)) throw deny(`ref ${c.ref}`);
   return c;
