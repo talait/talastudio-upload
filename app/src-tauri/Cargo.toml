@@ -1,6 +1,6 @@
 [package]
 name = "talastudio-upload"
-version = "0.1.0"
+version = "0.1.1"
 description = "TalaStudio upload: kirim file tim ke Drive dan lihat riwayat yang sama di semua PC"
 authors = ["TalaStudio IT"]
 edition = "2021"
