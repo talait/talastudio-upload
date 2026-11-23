@@ -20,15 +20,11 @@ type Job = {
   bytes: number; version_id: string | null; version: number | null; stored_name: string | null; message: string | null; started_ms: number;
 };
 type FileInfo = { path: string; name: string; size: number; is_file: boolean };
-type Code = { code: string; name: string | null };
-type Pending = { path: string; name: string; size: number; kind: string };
 
 // ---------- state ----------
 let state: AppState;
 let items: Item[] = [];
 const jobs = new Map<string, Job>();
-let codes: Code[] = [];
-let pending: Pending[] = [];
 let filter: 'all' | 'mine' | 'new' = 'all';
 let query = '';
 const open = new Set<number>();
@@ -57,10 +53,27 @@ function kindOf(name: string): string {
 }
 const isImage = (name: string) => /\.(png|jpe?g|webp|gif|bmp)$/i.test(name);
 
-/** "DH-104" from "vanity DH104 revision.png" / "dh_104_render.jpg"; null when the name has no code. */
-function codeOf(name: string): string | null {
-  const m = /(?:^|[^A-Za-z])([A-Za-z]{2})[-_ ]?(\d{3})(?!\d)/.exec(name);
-  return m ? `${m[1].toUpperCase()}-${m[2]}` : null;
+/**
+ * The item a file belongs to is its own name, without the extension and without revision endings, so
+ * "DOHEY TALLBOY 4 DRAWERS rev2.blend" and "dohey tallboy 4 drawers (1).blend" are versions of the same item.
+ * Matching ignores letter case (the server does that); the first name sent is the one everyone sees.
+ */
+function itemName(fileName: string): string {
+  let n = fileName.replace(/\.[A-Za-z0-9]{1,8}$/, '').replace(/_+/g, ' ').replace(/\s+/g, ' ').trim();
+  const endings = [
+    /[\s\-.]*\(\d+\)$/, // "name (1)"
+    /[\s\-.]*-?\s*copy( \(\d+\))?$/i, // "name - Copy"
+    /[\s\-.]+(?:v|ver|version|rev|revisi|revision|r)[\s.]*\d+[a-z]?$/i, // "name v2", "name rev 3", "name r2"
+    /[\s\-.]+(?:final|fix|fixed)$/i, // "name final"
+  ];
+  for (let changed = true; changed;) {
+    changed = false;
+    for (const re of endings) {
+      const m = n.replace(re, '').trim();
+      if (m && m !== n) { n = m; changed = true; }
+    }
+  }
+  return (n || fileName).slice(0, 80);
 }
 
 function when(iso: string | null): string {
@@ -141,10 +154,9 @@ function shell() {
     <main class="main">
       <div class="drop" id="drop" role="button" tabindex="0">
         ${ICON.upload}<strong>Drag files here or click to choose</strong>
-        <span class="small muted">Renders, drawings, 3D models. An item code in the file name (for example DH-104) is recognised automatically.</span>
+        <span class="small muted">Renders, drawings, 3D models. Send the same file name again and it becomes the next version.</span>
       </div>
       <div class="mini-sum" id="minisum"></div>
-      <div id="ask"></div>
       <p class="section-title" id="jobs-title" hidden>Sent from this PC</p>
       <div class="jobs" id="jobs"></div>
       <div class="filters" role="toolbar" aria-label="Filter">
@@ -176,46 +188,6 @@ function renderWho() {
   if (w) w.textContent = `${state.name ?? ''}${state.paused ? ' · notifications paused' : ''}`;
   const off = document.getElementById('offline');
   if (off) off.hidden = online;
-}
-
-function renderAsk() {
-  const box = document.getElementById('ask')!;
-  const p = pending[0];
-  if (!p) { box.innerHTML = ''; return; }
-  const list = codes.map((c) => `<option value="${esc(c.code)}">${esc(c.name ?? '')}</option>`).join('');
-  box.innerHTML = `<form class="card ask" id="askform" novalidate>
-    <h3>${esc(p.name)}: which item is it for?${pending.length > 1 ? ` <span class="small">(${pending.length} files waiting)</span>` : ''}</h3>
-    <div class="row">
-      <input type="text" id="askcode" list="codelist" placeholder="Item code, for example DH-104, or any name" maxlength="80" autocomplete="off">
-      <datalist id="codelist">${list}</datalist>
-      <select id="askkind" aria-label="File type">
-        ${['render', 'drawing', 'model', 'other'].map((k) => `<option value="${k}" ${k === p.kind ? 'selected' : ''}>${kindLabel(k)}</option>`).join('')}
-      </select>
-    </div>
-    <input type="text" id="asknote" placeholder="Revision note (optional)" maxlength="500">
-    <p class="field-error" id="askerr" hidden></p>
-    <div class="row">
-      <button class="btn btn-accent" type="submit">Send</button>
-      ${pending.length > 1 ? '<button class="btn" type="button" id="askall">Send all with this item</button>' : ''}
-      <button class="btn btn-ghost" type="button" id="askskip">Skip this file</button>
-    </div>
-  </form>`;
-  const code = document.getElementById('askcode') as HTMLInputElement;
-  code.focus();
-  const go = (all: boolean) => {
-    const v = code.value.trim();
-    const err = document.getElementById('askerr')!;
-    if (!v) { code.setAttribute('aria-invalid', 'true'); err.hidden = false; err.textContent = 'Type an item code or name first.'; return; }
-    const kind = (document.getElementById('askkind') as HTMLSelectElement).value;
-    const note = (document.getElementById('asknote') as HTMLInputElement).value;
-    const take = all ? pending.splice(0) : pending.splice(0, 1);
-    for (const f of take) void send(f.path, codeOf(v) ?? v, all ? kindOf(f.name) === 'other' ? kind : kindOf(f.name) : kind, note);
-    renderAsk();
-  };
-  (document.getElementById('askform') as HTMLFormElement).onsubmit = (e) => { e.preventDefault(); go(false); };
-  document.getElementById('askall')?.addEventListener('click', () => go(true));
-  document.getElementById('askskip')!.onclick = () => { pending.shift(); renderAsk(); };
-  code.oninput = () => { code.removeAttribute('aria-invalid'); document.getElementById('askerr')!.hidden = true; };
 }
 
 function jobView(j: Job): string {
@@ -354,12 +326,9 @@ async function addFiles(paths: string[]) {
   const infos = await invoke<FileInfo[]>('file_info', { paths });
   for (const f of infos) {
     if (!f.is_file || f.size === 0) continue;
-    const code = codeOf(f.name);
-    if (code) void send(f.path, code, kindOf(f.name), null);
-    else pending.push({ path: f.path, name: f.name, size: f.size, kind: kindOf(f.name) });
+    // no question: the file's own name is the item (owner feedback 23 Nov 2026)
+    void send(f.path, itemName(f.name), kindOf(f.name), null);
   }
-  if (pending.length && mini) await toggleMini(); // the question needs the full window
-  renderAsk();
 }
 
 async function send(path: string, code: string, kind: string, note: string | null) {
@@ -488,7 +457,6 @@ async function startMain() {
   for (const j of await invoke<Job[]>('upload_list')) jobs.set(j.local_id, j);
   renderItems();
   renderJobs();
-  invoke<Code[]>('codes').then((c) => { codes = c; if (pending.length) renderAsk(); }).catch(() => undefined);
 }
 
 async function main() {
