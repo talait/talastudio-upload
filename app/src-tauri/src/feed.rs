@@ -75,13 +75,23 @@ fn downloaded_any(item: &Value, me: &str) -> bool {
     }).unwrap_or(false)
 }
 
+/// New for the red number: not downloaded (is_new_for) and the newest version not seen on this PC yet.
+fn is_unseen_for(item: &Value, me: &str, seen: &[String]) -> bool {
+    if !is_new_for(item, me) {
+        return false;
+    }
+    let latest = item.get("versions").and_then(|v| v.as_array()).and_then(|vs| vs.iter().find(|v| s(v, "status") == "done").cloned());
+    latest.map(|v| !seen.iter().any(|x| x == s(&v, "id"))).unwrap_or(false)
+}
+
 pub fn refresh_tray(app: &AppHandle) {
-    let me = config::get(app).device_id.unwrap_or_default();
+    let cfg = config::get(app);
+    let me = cfg.device_id.clone().unwrap_or_default();
     let items = snapshot(app);
     let others_busy = items.iter().any(|i| {
         i.get("versions").and_then(|v| v.as_array()).map(|vs| vs.iter().any(|v| s(v, "status") == "uploading" && s(v, "device_id") != me)).unwrap_or(false)
     });
-    let new_count = items.iter().filter(|i| is_new_for(i, &me)).count();
+    let new_count = items.iter().filter(|i| is_unseen_for(i, &me, &cfg.seen)).count();
     let (mine_busy, mine_failed) = uploads::status(app);
     let state = if mine_failed {
         tray::Status::Error

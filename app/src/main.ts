@@ -6,7 +6,7 @@ import { open as pickFiles } from '@tauri-apps/plugin-dialog';
 import { disable as autostartOff, enable as autostartOn, isEnabled as autostartIsOn } from '@tauri-apps/plugin-autostart';
 
 // ---------- types ----------
-type AppState = { registered: boolean; name: string | null; device_id: string | null; version: string; notify: string; paused: boolean };
+type AppState = { registered: boolean; name: string | null; device_id: string | null; version: string; notify: string; paused: boolean; seen: string[] };
 type Download = { device_id: string; by: string; at: string };
 type Version = {
   id: string; version: number | null; name: string; original_name: string; size: number; mime: string | null; note: string | null;
@@ -31,6 +31,7 @@ const open = new Set<number>();
 const downloads = new Map<string, { bytes: number; total: number; path?: string; error?: string }>();
 const previews = new Map<string, string | null>();
 let online = true;
+const seen = new Set<string>();
 type Drop = { path: string; name: string; size: number; kind: string; label: string };
 let dropped: Drop[] = [];
 const skipNaming = () => { try { return localStorage.getItem('skipNaming') === '1'; } catch { return false; } };
@@ -109,15 +110,17 @@ const latestDone = (it: Item) => it.versions.find((v) => v.status === 'done');
 const uploadingV = (it: Item) => it.versions.find((v) => v.status === 'uploading');
 const hasMine = (v: Version) => v.device_id === me() || v.downloads.some((d) => d.device_id === me());
 
-function itemStatus(it: Item): { label: string; cls: string; isNew: boolean } {
+function itemStatus(it: Item): { label: string; cls: string; isNew: boolean; unseen?: boolean } {
   const up = uploadingV(it);
   if (up) return { label: `Uploading ${Math.floor((up.progress / Math.max(1, up.size)) * 100)}%`, cls: 'busy', isNew: false };
   const latest = latestDone(it);
   if (!latest) return { label: 'Failed', cls: 'err', isNew: false };
   if (latest.device_id === me()) return { label: 'Sent by me', cls: 'plain', isNew: false };
   if (latest.downloads.some((d) => d.device_id === me())) return { label: 'Downloaded', cls: 'ok', isNew: false };
-  if (it.versions.some((v) => v.status === 'done' && hasMine(v))) return { label: 'New revision', cls: 'rev', isNew: true };
-  return { label: 'New', cls: 'new', isNew: true };
+  // seen = row opened / opened from a notification: still not downloaded, but no longer counted on the taskbar
+  if (seen.has(latest.id)) return { label: 'Not downloaded', cls: 'plain', isNew: true, unseen: false };
+  if (it.versions.some((v) => v.status === 'done' && hasMine(v))) return { label: 'New revision', cls: 'rev', isNew: true, unseen: true };
+  return { label: 'New', cls: 'new', isNew: true, unseen: true };
 }
 
 // ---------- rendering ----------
@@ -167,6 +170,7 @@ function shell() {
         <button class="chip" data-f="all" aria-pressed="true">All</button>
         <button class="chip" data-f="mine" aria-pressed="false">Sent by me</button>
         <button class="chip" data-f="new" aria-pressed="false">Not downloaded yet <span id="newcount"></span></button>
+        <button class="btn btn-ghost btn-sm" id="seenall" hidden>Mark all as seen</button>
         <input type="text" id="q" placeholder="Search DH-104, collection, name" aria-label="Search">
       </div>
       <div class="items" id="items"></div>
@@ -181,6 +185,10 @@ function shell() {
     document.querySelectorAll('.chip').forEach((x) => x.setAttribute('aria-pressed', String(x === c)));
     renderItems();
   }));
+  (document.getElementById('seenall') as HTMLButtonElement).onclick = () => {
+    const ids = items.filter((it) => itemStatus(it).unseen).map((it) => latestDone(it)!.id);
+    markSeen(ids);
+  };
   (document.getElementById('q') as HTMLInputElement).oninput = (e) => { query = (e.target as HTMLInputElement).value.toLowerCase(); renderItems(); };
   document.getElementById('items')!.addEventListener('click', onItemsClick);
   document.getElementById('jobs')!.addEventListener('click', onJobsClick);
@@ -263,6 +271,8 @@ function renderItems() {
   const visible = items.filter((it) => it.versions.some((v) => v.status === 'done' || v.status === 'uploading'));
   const newCount = visible.filter((it) => itemStatus(it).isNew).length;
   document.getElementById('newcount')!.textContent = newCount ? `(${newCount})` : '';
+  const unseenCount = visible.filter((it) => itemStatus(it).unseen).length;
+  (document.getElementById('seenall') as HTMLButtonElement).hidden = unseenCount === 0;
   const rows = visible.filter((it) => {
     if (filter === 'mine' && !it.versions.some((v) => v.device_id === me())) return false;
     if (filter === 'new' && !itemStatus(it).isNew) return false;
@@ -315,7 +325,7 @@ function renderMiniSum() {
   const el = document.getElementById('minisum');
   if (!el) return;
   const active = [...jobs.values()].filter((j) => ['hashing', 'starting', 'uploading'].includes(j.state)).length;
-  const fresh = items.filter((it) => itemStatus(it).isNew).length;
+  const fresh = items.filter((it) => itemStatus(it).unseen).length;
   el.textContent = [active ? `${active} uploading` : 'No uploads running', fresh ? `${fresh} new` : ''].filter(Boolean).join(' · ');
 }
 
@@ -406,7 +416,15 @@ async function send(path: string, code: string, kind: string, note: string | nul
   }
 }
 
+function markSeen(ids: string[]) {
+  const fresh = ids.filter((i) => !seen.has(i));
+  for (const i of fresh) seen.add(i);
+  renderItems();
+  if (fresh.length) void invoke('mark_seen', { ids: fresh }).catch(() => undefined);
+}
+
 async function download(id: string) {
+  seen.add(id);
   downloads.set(id, { bytes: 0, total: 0 });
   renderItems();
   try {
@@ -427,7 +445,17 @@ function onItemsClick(e: Event) {
   const ln = t.closest<HTMLElement>('[data-link]');
   if (ln) { e.stopPropagation(); invoke('open_link', { url: ln.dataset.link! }).catch((err) => alertInline(String(err))); return; }
   const op = t.closest<HTMLElement>('[data-open]');
-  if (op) { const id = Number(op.dataset.open); open.has(id) ? open.delete(id) : open.add(id); renderItems(); }
+  if (op) {
+    const id = Number(op.dataset.open);
+    if (open.has(id)) open.delete(id);
+    else {
+      open.add(id);
+      const it = items.find((i) => i.id === id);
+      const l = it && latestDone(it);
+      if (l && !seen.has(l.id)) { markSeen([l.id]); return; }
+    }
+    renderItems();
+  }
 }
 
 async function onJobsClick(e: Event) {
@@ -530,6 +558,7 @@ async function startMain() {
 
 async function main() {
   state = await invoke<AppState>('get_state');
+  for (const id of state.seen ?? []) seen.add(id);
 
   await listen<Item[]>('items', (e) => { items = e.payload; renderItems(); });
   await listen<Job>('upload', (e) => { jobs.set(e.payload.local_id, e.payload); renderJobs(); });
@@ -543,6 +572,7 @@ async function main() {
   await listen('settings-changed', async () => { state = await invoke<AppState>('get_state'); renderWho(); });
   await listen<string>('focus-version', (e) => {
     focusVersion = e.payload;
+    seen.add(e.payload);
     const it = items.find((i) => i.versions.some((v) => v.id === e.payload));
     if (it) { open.add(it.id); filter = 'all'; renderItems(); document.querySelector(`[data-item="${it.id}"]`)?.scrollIntoView({ block: 'center' }); }
     setTimeout(() => { focusVersion = null; renderItems(); }, 4000);

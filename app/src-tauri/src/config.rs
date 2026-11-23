@@ -22,6 +22,10 @@ pub struct Config {
     /// Unix seconds until which notifications are paused (tray menu "Pause notifications for 1 hour").
     #[serde(default)]
     pub paused_until: u64,
+    /// Versions this PC has seen (row opened, downloaded, or opened from a notification). The red number on the
+    /// taskbar counts new files of others that are not seen yet. Newest last, capped.
+    #[serde(default)]
+    pub seen: Vec<String>,
     /// Autostart was switched on once at first run; after that the person decides.
     #[serde(default)]
     pub autostart_set: bool,
@@ -70,4 +74,19 @@ pub fn update(app: &AppHandle, f: impl FnOnce(&mut Config)) -> Config {
 
 pub fn now_secs() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+}
+
+/// Remember versions as seen on this PC (keeps the newest 3000).
+pub fn mark_seen(app: &AppHandle, ids: &[String]) {
+    update(app, |c| {
+        for id in ids {
+            if !c.seen.iter().any(|s| s == id) {
+                c.seen.push(id.clone());
+            }
+        }
+        let n = c.seen.len();
+        if n > 3000 {
+            c.seen.drain(0..n - 3000);
+        }
+    });
 }

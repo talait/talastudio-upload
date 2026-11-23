@@ -28,6 +28,7 @@ struct AppState {
     version: &'static str,
     notify: String,
     paused: bool,
+    seen: Vec<String>,
 }
 
 fn app_state(app: &AppHandle) -> AppState {
@@ -39,6 +40,7 @@ fn app_state(app: &AppHandle) -> AppState {
         version: env!("CARGO_PKG_VERSION"),
         notify: c.notify,
         paused: c.paused_until > config::now_secs(),
+        seen: c.seen,
     }
 }
 
@@ -77,6 +79,13 @@ fn set_notify(app: AppHandle, mode: String) -> AppState {
     let mode = if ["all", "downloaded", "off"].contains(&mode.as_str()) { mode } else { "all".into() };
     config::update(&app, |c| c.notify = mode);
     app_state(&app)
+}
+
+/// The person looked at these versions (opened the row, "Mark all as seen"): the taskbar number drops.
+#[tauri::command]
+fn mark_seen(app: AppHandle, ids: Vec<String>) {
+    config::mark_seen(&app, &ids);
+    feed::refresh_tray(&app);
 }
 
 #[tauri::command]
@@ -205,6 +214,8 @@ async fn download_to_disk(app: &AppHandle, version_id: &str) -> Result<String, S
     drop(f);
     tokio::fs::rename(&part, &target).await.map_err(|e| e.to_string())?;
     let path = target.to_string_lossy().to_string();
+    config::mark_seen(app, &[version_id.to_string()]);
+    feed::refresh_tray(app);
     let _ = app.emit("download", json!({ "version_id": version_id, "bytes": got, "total": total, "path": path, "done": true }));
     Ok(path)
 }
@@ -359,6 +370,8 @@ pub fn run() {
                 } else {
                     tray::show_window(&h2);
                     if let Some(id) = arg.strip_prefix("open:").filter(|s| !s.is_empty()) {
+                        config::mark_seen(&h2, &[id.to_string()]);
+                        feed::refresh_tray(&h2);
                         let _ = h2.emit("focus-version", id.to_string());
                     }
                 }
@@ -408,7 +421,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_state, register, rename, set_notify, codes, items, file_info, start_upload, upload_list, cancel_upload,
-            dismiss_upload, set_note, download, preview, check_update, open_link, reveal
+            dismiss_upload, set_note, download, preview, check_update, open_link, reveal, mark_seen
         ])
         .run(tauri::generate_context!())
         .expect("error while running TalaStudio Upload");
