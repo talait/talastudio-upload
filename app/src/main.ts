@@ -4,7 +4,6 @@ import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { getCurrentWindow, LogicalSize } from '@tauri-apps/api/window';
 import { open as pickFiles } from '@tauri-apps/plugin-dialog';
 import { disable as autostartOff, enable as autostartOn, isEnabled as autostartIsOn } from '@tauri-apps/plugin-autostart';
-import { openUrl, revealItemInDir } from '@tauri-apps/plugin-opener';
 
 // ---------- types ----------
 type AppState = { registered: boolean; name: string | null; device_id: string | null; version: string; notify: string; paused: boolean };
@@ -133,7 +132,7 @@ function renderWelcome(error = '') {
 function shell() {
   app.innerHTML = `
     <header class="top">
-      <div class="brand"><img src="/icon.png" alt="">TalaStudio Upload</div>
+      <div class="brand"><img src="/icon.png" alt=""><span>TalaStudio Upload</span></div>
       <span class="who" id="who"></span>
       <button class="btn btn-ghost btn-sm" id="minibtn" title="Compact mode, always on top">${ICON.pin}<span>Compact</span></button>
       <button class="btn btn-ghost btn-sm" id="setbtn" aria-label="Settings">${ICON.gear}</button>
@@ -328,6 +327,14 @@ function renderItems() {
   renderMiniSum();
 }
 
+function alertInline(msg: string) {
+  const off = document.getElementById('offline');
+  if (!off) return;
+  off.textContent = msg;
+  off.hidden = false;
+  setTimeout(() => { off.hidden = online; off.textContent = 'Not connected to the server. Uploads and history wait until the internet is back.'; }, 6000);
+}
+
 function renderMiniSum() {
   const el = document.getElementById('minisum');
   if (!el) return;
@@ -351,6 +358,7 @@ async function addFiles(paths: string[]) {
     if (code) void send(f.path, code, kindOf(f.name), null);
     else pending.push({ path: f.path, name: f.name, size: f.size, kind: kindOf(f.name) });
   }
+  if (pending.length && mini) await toggleMini(); // the question needs the full window
   renderAsk();
 }
 
@@ -383,9 +391,9 @@ function onItemsClick(e: Event) {
   const dl = t.closest<HTMLElement>('[data-dl]');
   if (dl) { e.stopPropagation(); void download(dl.dataset.dl!); return; }
   const rv = t.closest<HTMLElement>('[data-reveal]');
-  if (rv) { e.stopPropagation(); void revealItemInDir(rv.dataset.reveal!); return; }
+  if (rv) { e.stopPropagation(); invoke('reveal', { path: rv.dataset.reveal! }).catch((err) => alertInline(String(err))); return; }
   const ln = t.closest<HTMLElement>('[data-link]');
-  if (ln) { e.stopPropagation(); void openUrl(ln.dataset.link!); return; }
+  if (ln) { e.stopPropagation(); invoke('open_link', { url: ln.dataset.link! }).catch((err) => alertInline(String(err))); return; }
   const op = t.closest<HTMLElement>('[data-open]');
   if (op) { const id = Number(op.dataset.open); open.has(id) ? open.delete(id) : open.add(id); renderItems(); }
 }
@@ -410,12 +418,20 @@ async function onJobsClick(e: Event) {
   }
 }
 
+let fullSize: { w: number; h: number } | null = null;
 async function toggleMini() {
   mini = !mini;
   document.body.classList.toggle('mini', mini);
   const w = getCurrentWindow();
+  if (mini) {
+    // remember the size the person chose, to come back to it
+    const scale = await w.scaleFactor();
+    const s = (await w.innerSize()).toLogical(scale);
+    fullSize = { w: Math.round(s.width), h: Math.round(s.height) };
+    if (await w.isMaximized()) await w.unmaximize();
+  }
   await w.setAlwaysOnTop(mini);
-  await w.setSize(new LogicalSize(mini ? 320 : 980, mini ? 230 : 700));
+  await w.setSize(mini ? new LogicalSize(380, 250) : new LogicalSize(fullSize?.w ?? 1040, fullSize?.h ?? 760));
   const b = document.getElementById('minibtn')!;
   b.innerHTML = mini ? `${ICON.pin}<span>Full size</span>` : `${ICON.pin}<span>Compact</span>`;
 }

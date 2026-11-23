@@ -261,6 +261,24 @@ async fn preview(app: AppHandle, version_id: String) -> Result<Option<String>, S
     Ok(out)
 }
 
+/// Open a Drive link in the default browser (only Google Drive / Docs addresses).
+#[tauri::command]
+fn open_link(app: AppHandle, url: String) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    let ok = url.starts_with("https://drive.google.com/") || url.starts_with("https://docs.google.com/");
+    if !ok {
+        return Err("Only Google Drive links can be opened.".into());
+    }
+    app.opener().open_url(url, None::<&str>).map_err(|e| e.to_string())
+}
+
+/// Show a downloaded file in Explorer.
+#[tauri::command]
+fn reveal(app: AppHandle, path: String) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    app.opener().reveal_item_in_dir(path).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 async fn check_update(app: AppHandle) -> Result<Option<String>, String> {
     update_now(&app, true).await
@@ -368,6 +386,11 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 tokio::time::sleep(Duration::from_secs(60)).await;
                 loop {
+                    // not registered yet: look again in a minute, so a fresh install updates soon after the name is typed
+                    if config::get(&h).token.is_none() {
+                        tokio::time::sleep(Duration::from_secs(60)).await;
+                        continue;
+                    }
                     if let Err(e) = update_now(&h, false).await {
                         eprintln!("update: {e}");
                     }
@@ -385,7 +408,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_state, register, rename, set_notify, codes, items, file_info, start_upload, upload_list, cancel_upload,
-            dismiss_upload, set_note, download, preview, check_update
+            dismiss_upload, set_note, download, preview, check_update, open_link, reveal
         ])
         .run(tauri::generate_context!())
         .expect("error while running TalaStudio Upload");

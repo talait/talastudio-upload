@@ -15,10 +15,10 @@
       {
         "label": "main",
         "title": "TalaStudio Upload",
-        "width": 980,
-        "height": 700,
-        "minWidth": 300,
-        "minHeight": 220,
+        "width": 1040,
+        "height": 760,
+        "minWidth": 360,
+        "minHeight": 240,
         "visible": false,
         "dragDropEnabled": true,
         "center": true

@@ -22,6 +22,24 @@ const IDLE: &[u8] = include_bytes!("../icons/tray-idle.png");
 const BUSY: &[u8] = include_bytes!("../icons/tray-busy.png");
 const NEW: &[u8] = include_bytes!("../icons/tray-new.png");
 const ERROR: &[u8] = include_bytes!("../icons/tray-error.png");
+#[cfg(windows)]
+const BADGES: [&[u8]; 10] = [
+    include_bytes!("../icons/badge-1.png"), include_bytes!("../icons/badge-2.png"), include_bytes!("../icons/badge-3.png"),
+    include_bytes!("../icons/badge-4.png"), include_bytes!("../icons/badge-5.png"), include_bytes!("../icons/badge-6.png"),
+    include_bytes!("../icons/badge-7.png"), include_bytes!("../icons/badge-8.png"), include_bytes!("../icons/badge-9.png"),
+    include_bytes!("../icons/badge-9plus.png"),
+];
+
+/// Red number on the taskbar button = files this PC has not downloaded yet (Windows overlay icon).
+fn set_badge(app: &AppHandle, count: usize) {
+    #[cfg(windows)]
+    if let Some(w) = app.get_webview_window("main") {
+        let img = if count == 0 { None } else { Image::from_bytes(BADGES[count.min(10) - 1]).ok() };
+        let _ = w.set_overlay_icon(img);
+    }
+    #[cfg(not(windows))]
+    let _ = (app, count);
+}
 
 pub fn show_window(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
@@ -74,6 +92,7 @@ pub fn set(app: &AppHandle, status: Status, new_count: usize) {
         return;
     }
     *g = Some((status, new_count));
+    set_badge(app, new_count);
     if let Some(t) = app.tray_by_id("main") {
         let bytes = match status {
             Status::Idle => IDLE,
