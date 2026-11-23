@@ -1,0 +1,62 @@
+name: Deploy server (upload.talastudio.net)
+
+# Deploys the Worker in server/ on every push to main that changes it (or by hand: Run workflow).
+# Needs, in repo Settings > Secrets and variables > Actions:
+#   Secret   CLOUDFLARE_API_TOKEN   token with Workers Scripts: Edit, Hyperdrive: Read,
+#                                   and for zone talastudio.net Workers Routes: Edit + DNS: Edit
+#   Variable CLOUDFLARE_ACCOUNT_ID
+# The Worker's own secret GOOGLE_SA_KEY is set once in the Cloudflare dashboard (kept across deploys).
+
+on:
+  push:
+    branches: [main]
+    paths: ['server/**', '.github/workflows/deploy-server.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-server
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the Cloudflare token
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::error::Set secret CLOUDFLARE_API_TOKEN and variable CLOUDFLARE_ACCOUNT_ID in the repo settings."; exit 1
+          fi
+          curl -sS "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/tokens/verify" \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" | node -e "
+              const d=JSON.parse(require('fs').readFileSync(0,'utf8'));
+              console.log('token status:', d.result?.status, d.success ? '' : JSON.stringify(d.errors));
+              if(!d.success||d.result?.status!=='active')process.exit(1);"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npx wrangler deploy
+
+      - name: Smoke test
+        run: |
+          sleep 10
+          curl -sS --fail https://upload.talastudio.net/ || (echo "::warning::upload.talastudio.net does not answer yet (DNS for a new custom domain can take a few minutes)"; exit 0)
+          echo
+          code=$(curl -s -o /dev/null -w '%{http_code}' https://upload.talastudio.net/api/feed)
+          echo "/api/feed without token -> $code (expected 401)"
