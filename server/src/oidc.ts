@@ -24,13 +24,15 @@ export async function verifyGithubOidc(auth: string | null, audience: string, re
   if (!token) throw Object.assign(deny('tidak ada token GitHub OIDC'), { status: 401 });
   const [h, p, s] = token.split('.');
   if (!h || !p || !s) throw deny('token rusak');
-  const header = JSON.parse(new TextDecoder().decode(unb64(h))) as { alg: string; kid: string };
+  let header: { alg: string; kid: string };
+  try { header = JSON.parse(new TextDecoder().decode(unb64(h))); } catch { throw deny('token rusak'); }
   if (header.alg !== 'RS256') throw deny('algoritma token');
   let jwk = (await keys()).find((k) => k.kid === header.kid);
   if (!jwk) jwk = (await keys(true)).find((k) => k.kid === header.kid);
   if (!jwk) throw deny('kunci GitHub tidak dikenal');
   const key = await crypto.subtle.importKey('jwk', { kty: jwk.kty, n: jwk.n, e: jwk.e, alg: 'RS256', ext: true }, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['verify']);
-  const ok = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', key, unb64(s), new TextEncoder().encode(`${h}.${p}`));
+  let ok = false;
+  try { ok = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', key, unb64(s), new TextEncoder().encode(`${h}.${p}`)); } catch { ok = false; }
   if (!ok) throw deny('tanda tangan tidak cocok');
   const c = JSON.parse(new TextDecoder().decode(unb64(p))) as Claims;
   const now = Math.floor(Date.now() / 1000);

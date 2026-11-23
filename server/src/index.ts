@@ -7,7 +7,7 @@ import { verifyGithubOidc } from './oidc';
  * Every /api call carries the PC's device token (Authorization: Bearer …), made once at install by /api/register.
  * The bytes never pass through here on the way up: the PC sends them straight to a Google Drive resumable session.
  */
-const VERSION = '2026-11-23.1';
+const VERSION = '2026-11-23.2';
 
 type Json = Record<string, unknown>;
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { 'Cache-Control': 'no-store' } });
