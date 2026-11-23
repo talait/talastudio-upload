@@ -1,0 +1,109 @@
+name: Build Windows app
+
+# Every push to main builds the installer (download it from the run's artifacts).
+# A tag vX.Y.Z also makes a GitHub Release and publishes the signed update to upload.talastudio.net,
+# so every installed app updates itself. Publishing uses GitHub OIDC (no shared secret).
+#
+# One-time setup (repo Settings > Secrets and variables > Actions):
+#   Secret   TAURI_SIGNING_PRIVATE_KEY            private key from `npx @tauri-apps/cli signer generate`
+#   Secret   TAURI_SIGNING_PRIVATE_KEY_PASSWORD   its password (may be empty)
+#   Variable TAURI_UPDATER_PUBKEY                 the matching public key (not secret)
+# Without them the installer still builds, but apps cannot update themselves from it.
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*.*.*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri -> target
+
+      - name: Check versions match
+        run: |
+          PKG=$(node -p "require('./package.json').version")
+          CARGO=$(grep -m1 '^version' src-tauri/Cargo.toml | cut -d'"' -f2)
+          echo "package.json $PKG, Cargo.toml $CARGO"
+          test "$PKG" = "$CARGO"
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then test "refs/tags/v$PKG" = "$GITHUB_REF"; fi
+
+      - name: Turn on signed updates when the key is set
+        env:
+          PUBKEY: ${{ vars.TAURI_UPDATER_PUBKEY }}
+          HAS_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
+        run: |
+          if [ -n "$PUBKEY" ] && [ "$HAS_KEY" = "true" ]; then
+            node -e "
+              const fs=require('fs');const p='src-tauri/tauri.conf.json';const c=JSON.parse(fs.readFileSync(p,'utf8'));
+              c.plugins.updater.pubkey=process.env.PUBKEY;c.bundle.createUpdaterArtifacts=true;
+              fs.writeFileSync(p,JSON.stringify(c,null,2));"
+            echo "SIGNED=1" >> "$GITHUB_ENV"
+          else
+            echo "::warning::TAURI_UPDATER_PUBKEY / TAURI_SIGNING_PRIVATE_KEY not set: building without self-update."
+          fi
+
+      - run: npm ci
+
+      - name: Build installer
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npx tauri build
+
+      - name: Find installer
+        run: |
+          EXE=$(ls src-tauri/target/release/bundle/nsis/*-setup.exe | head -1)
+          echo "EXE=$EXE" >> "$GITHUB_ENV"
+          ls -la src-tauri/target/release/bundle/nsis/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TalaStudio-Upload-installer
+          path: app/src-tauri/target/release/bundle/nsis/*-setup.exe*
+          retention-days: 30
+
+      - name: GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "$EXE" --title "TalaStudio Upload $GITHUB_REF_NAME" --notes "Installer Windows. Aplikasi yang sudah terpasang memperbarui diri sendiri." || \
+          gh release upload "$GITHUB_REF_NAME" "$EXE" --clobber
+
+      - name: Publish update to upload.talastudio.net
+        if: startsWith(github.ref, 'refs/tags/v') && env.SIGNED == '1'
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          OIDC=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=upload.talastudio.net" | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).value")
+          SIG=$(cat "$EXE.sig")
+          NOTES=$(git log -1 --pretty=%s)
+          curl -sS --fail-with-body -X POST https://upload.talastudio.net/app/publish \
+            -H "Authorization: Bearer $OIDC" \
+            --form-string "version=$VERSION" --form-string "notes=$NOTES" --form-string "signature=$SIG" -F "installer=@$EXE"

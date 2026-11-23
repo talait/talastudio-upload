@@ -1,0 +1,44 @@
+[package]
+name = "talastudio-upload"
+version = "0.1.0"
+description = "TalaStudio upload: kirim file tim ke Drive dan lihat riwayat yang sama di semua PC"
+authors = ["TalaStudio IT"]
+edition = "2021"
+rust-version = "1.82"
+
+[lib]
+name = "talastudio_upload_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.7.6", features = [] }
+
+[dependencies]
+tauri = { version = "2.12.7", features = ["tray-icon", "image-png", "protocol-asset"] }
+tauri-plugin-single-instance = "2.5.5"
+tauri-plugin-autostart = "2.7.0"
+tauri-plugin-updater = "2.14.1"
+tauri-plugin-dialog = "2.8.4"
+tauri-plugin-opener = "2.7.3"
+tauri-plugin-process = "2.4.0"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+reqwest = { version = "0.13.5", default-features = false, features = ["json", "stream", "rustls-no-provider", "http2", "charset", "system-proxy"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+tokio = { version = "1.54.1", features = ["fs", "io-util", "time", "sync", "macros"] }
+futures-util = "0.3"
+sha2 = "0.10"
+hex = "0.4"
+base64 = "0.22"
+mime_guess = "2.0"
+
+[target.'cfg(windows)'.dependencies]
+windows-core = "0.62"
+windows = { version = "0.62", features = ["Foundation", "Foundation_Collections", "Data_Xml_Dom", "UI_Notifications"] }
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

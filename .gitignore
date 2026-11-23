@@ -1,0 +1,7 @@
+node_modules/
+dist/
+app/src-tauri/target/
+app/src-tauri/gen/
+server/.wrangler/
+.DS_Store
+*.log

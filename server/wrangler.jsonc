@@ -1,0 +1,24 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "talastudio-upload",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  // Only the custom domain; no *.workers.dev address.
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [{ "pattern": "upload.talastudio.net", "custom_domain": true }],
+  // Same Hyperdrive config as the workspace and MCP Workers: "talastudio-db-app", role ts_app, caching off.
+  // ts_app may only call filedrop.* functions here (see migration 20261123100000_filedrop.sql in talait/talastudio-supabase).
+  "hyperdrive": [
+    { "binding": "HYPERDRIVE_APP", "id": "496d964d34cd4a3c977e785aadf45183", "localConnectionString": "postgresql://postgres:postgres@127.0.0.1:5432/postgres" }
+  ],
+  // Variables/secrets set in the dashboard survive deploys.
+  "keep_vars": true,
+  "vars": {
+    "GITHUB_REPO": "talait/talastudio-upload"
+  }
+  // Dashboard > Worker > Settings > Variables and Secrets:
+  //   Secret: GOOGLE_SA_KEY  (same value as on the talastudio-workspace Worker; the service account that uploads to TALASTUDIO ASSETS)
+}
