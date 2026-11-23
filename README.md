@@ -29,7 +29,7 @@ PC app ──(device token)──> upload.talastudio.net (Worker) ──> Supaba
 
 ## Updates
 
-Push a tag `vX.Y.Z` (after bumping the version in `app/package.json` and `app/src-tauri/Cargo.toml`). The build sends the
+Bump the version in `app/package.json` and `app/src-tauri/Cargo.toml` and push to main (or push a tag `vX.Y.Z`). The build sends the
 installer to the Worker with GitHub OIDC; the Worker signs it (secret `UPDATER_SIGNING_KEY`, Ed25519 in minisign format)
 and offers it to every installed app. The public key is in `app/src-tauri/tauri.conf.json`; apps reject anything not
 signed with the matching key, and the signature carries the version (`requireSignedVersion`).

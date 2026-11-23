@@ -8,7 +8,7 @@ import { signInstaller } from './sign';
  * Every /api call carries the PC's device token (Authorization: Bearer …), made once at install by /api/register.
  * The bytes never pass through here on the way up: the PC sends them straight to a Google Drive resumable session.
  */
-const VERSION = '2026-11-23.3';
+const VERSION = '2026-11-23.4';
 
 type Json = Record<string, unknown>;
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { 'Cache-Control': 'no-store' } });
@@ -173,7 +173,7 @@ async function route(req: Request, env: Env, url: URL): Promise<Response> {
     const version = String(form.get('version') ?? '').replace(/^v/, '');
     const file = form.get('installer') as unknown as File | null;
     if (!/^\d+\.\d+\.\d+$/.test(version) || !file) throw new HttpError(400, 'Kirim version dan installer.');
-    if (claims.ref !== `refs/tags/v${version}`) throw new HttpError(403, `Tag ${claims.ref} tidak cocok dengan versi ${version}.`);
+    if (claims.ref.startsWith('refs/tags/') && claims.ref !== `refs/tags/v${version}`) throw new HttpError(403, `Tag ${claims.ref} tidak cocok dengan versi ${version}.`);
     const buf = new Uint8Array(await file.arrayBuffer());
     // the server signs (secret UPDATER_SIGNING_KEY); a signature sent by the build is used only when there is no key here
     const key = process.env.UPDATER_SIGNING_KEY;

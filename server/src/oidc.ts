@@ -1,6 +1,6 @@
 /**
  * GitHub Actions OIDC: the release workflow asks GitHub for a short-lived signed token (audience = this host) and sends it
- * with the installer. We check GitHub's signature, the repository and that it runs for a version tag, so publishing an
+ * with the installer. We check GitHub's signature, the repository and that it runs for main or a version tag, so publishing an
  * update needs no shared secret at all.
  */
 const ISSUER = 'https://token.actions.githubusercontent.com';
@@ -40,6 +40,6 @@ export async function verifyGithubOidc(auth: string | null, audience: string, re
   if (!(Array.isArray(c.aud) ? c.aud.includes(audience) : c.aud === audience)) throw deny('audience');
   if (c.exp < now - 30 || (c.nbf && c.nbf > now + 30)) throw deny('token kedaluwarsa');
   if (c.repository !== repo) throw deny(`repo ${c.repository}`);
-  if (!/^refs\/tags\/v\d+\.\d+\.\d+$/.test(c.ref)) throw deny(`ref ${c.ref}`);
+  if (!/^refs\/(tags\/v\d+\.\d+\.\d+|heads\/main)$/.test(c.ref)) throw deny(`ref ${c.ref}`);
   return c;
 }
