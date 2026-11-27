@@ -1,4 +1,4 @@
-import { closeClient, one, requestStore, sql, type Env } from './db';
+import { closeClient, one, requestStore, restFeed, sql, type Env } from './db';
 import { ensureFolder, fileStream, getFile, startResumable, thumbnail } from './google';
 import { verifyGithubOidc } from './oidc';
 import { signInstaller } from './sign';
@@ -8,7 +8,7 @@ import { signInstaller } from './sign';
  * Every /api call carries the PC's device token (Authorization: Bearer …), made once at install by /api/register.
  * The bytes never pass through here on the way up: the PC sends them straight to a Google Drive resumable session.
  */
-const VERSION = '2026-11-23.5';
+const VERSION = '2026-11-27.1';
 
 type Json = Record<string, unknown>;
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { 'Cache-Control': 'no-store' } });
@@ -67,10 +67,28 @@ async function route(req: Request, env: Env, url: URL): Promise<Response> {
   if (p === '/api/codes' && req.method === 'GET') return json({ codes: await one(sql`select filedrop.codes(${bearer(req)}) as r`) });
 
   // ---- shared history (the app polls this every few seconds) ----
+  // Over the Supabase REST API when its secret is set (does not count against Hyperdrive), else through Hyperdrive.
   if (p === '/api/feed' && req.method === 'GET') {
     const since = url.searchParams.get('since');
     const s = since && !Number.isNaN(Date.parse(since)) ? new Date(since).toISOString() : null;
-    return json(await one(sql`select filedrop.feed(${bearer(req)}, ${s}::timestamptz) as r`));
+    const token = bearer(req);
+    let via = 'hyperdrive';
+    if (env.SUPABASE_URL && env.SUPABASE_SECRET_KEY) {
+      try {
+        const r = json(await restFeed(env, token, s));
+        r.headers.set('x-feed-via', 'rest');
+        return r;
+      } catch (e) {
+        // Database answers (e.g. 28000 unknown device) go to the app as usual; a REST outage or a wrong key
+        // falls back to Hyperdrive so the PCs keep working, and is logged for IT.
+        if (typeof (e as { code?: unknown }).code === 'string') throw e; // SQLSTATE; a timeout's DOMException code is a number
+        console.error(`feed: REST failed, using Hyperdrive: ${(e as Error).message}`);
+        via = 'hyperdrive-fallback';
+      }
+    }
+    const r = json(await one(sql`select filedrop.feed(${token}, ${s}::timestamptz) as r`));
+    r.headers.set('x-feed-via', via);
+    return r;
   }
 
   // ---- uploads ----

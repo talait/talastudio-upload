@@ -17,8 +17,11 @@
   // Variables/secrets set in the dashboard survive deploys.
   "keep_vars": true,
   "vars": {
-    "GITHUB_REPO": "talait/talastudio-upload"
+    "GITHUB_REPO": "talait/talastudio-upload",
+    // /api/feed goes over the Supabase REST API (not Hyperdrive) once SUPABASE_SECRET_KEY is set (27 Nov 2026).
+    "SUPABASE_URL": "https://sobinutyzhldustwwmmw.supabase.co"
   }
   // Dashboard > Worker > Settings > Variables and Secrets:
   //   Secret: GOOGLE_SA_KEY  (same value as on the talastudio-workspace Worker; the service account that uploads to TALASTUDIO ASSETS)
+  //   Secret: SUPABASE_SECRET_KEY  (a Supabase secret key sb_secret_… of its own, e.g. named "upload-worker"; the Worker uses it only for public.filedrop_feed)
 }
