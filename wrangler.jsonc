@@ -1,0 +1,24 @@
+{
+  // Root config for Cloudflare Workers Builds, which runs `npx wrangler deploy` from the repository root.
+  // Without this file Builds deployed an empty, assets-only version on 27 Nov 2026 (no fetch handler, no bindings)
+  // and every PC lost the server for 11 minutes. Keep it in step with server/wrangler.jsonc.
+  "$schema": "server/node_modules/wrangler/config-schema.json",
+  "name": "talastudio-upload",
+  "main": "server/src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  "build": { "command": "npm ci --prefix server" },
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [{ "pattern": "upload.talastudio.net", "custom_domain": true }],
+  "hyperdrive": [
+    { "binding": "HYPERDRIVE_APP", "id": "496d964d34cd4a3c977e785aadf45183", "localConnectionString": "postgresql://postgres:postgres@127.0.0.1:5432/postgres" }
+  ],
+  "keep_vars": true,
+  "vars": {
+    "GITHUB_REPO": "talait/talastudio-upload",
+    "SUPABASE_URL": "https://sobinutyzhldustwwmmw.supabase.co"
+  }
+  // Secrets (GOOGLE_SA_KEY, UPDATER_SIGNING_KEY, SUPABASE_SECRET_KEY) live in the Worker's Settings > Variables and Secrets.
+}
